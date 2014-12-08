@@ -54,6 +54,9 @@
 
 #define CC_MIN_SIZE 7
 
+#define CONFIG_NBS 0
+#define CONFIG_WBS 1
+
 #define MIN(X,Y) ((X) < (Y) ? (X) : (Y))
 
 static int bcm43xx_read_local_name(int fd, char *name, size_t size)
@@ -147,6 +150,86 @@ static int bcm43xx_set_bdaddr(int fd, const char *bdaddr)
 
 	if (resp[4] != cmd[1] || resp[5] != cmd[2] || resp[6] != CMD_SUCCESS) {
 		fprintf(stderr, "Failed to set bdaddr, command failure\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int bcm43xx_set_sco_config(int fd, uint32_t speech_cfg)
+{
+	// default config (NBS)
+	unsigned char cmd_i2spcm_interface_param[] =
+		{ HCI_COMMAND_PKT, 0x6d, 0xfc, 0x04, 0x00, 0x00, 0x00,
+			0x00 };
+	unsigned char cmd_sco_pcm_int_param[] =
+		{ HCI_COMMAND_PKT, 0x1c, 0xfc, 0x05, 0x00, 0x00, 0x00,
+			0x00, 0x00 };
+	unsigned char cmd_sco_pcm_data_format[] =
+		{ HCI_COMMAND_PKT, 0x1e, 0xfc, 0x05, 0x00, 0x00, 0x03,
+			0x03, 0x00 };
+	unsigned char resp[CC_MIN_SIZE];
+
+	if(speech_cfg == CONFIG_WBS) {
+		printf("Set SCO config to WBS\n");
+		cmd_i2spcm_interface_param[4] = (uint8_t) (0x01);
+		cmd_i2spcm_interface_param[5] = (uint8_t) (0x01);
+		cmd_sco_pcm_int_param[5] = (uint8_t) (0x01);
+	} else {
+		printf("Set SCO config to default (NBS)\n");
+	}
+
+	tcflush(fd, TCIOFLUSH);
+
+	if (write(fd, cmd_i2spcm_interface_param,
+	    sizeof(cmd_i2spcm_interface_param)) != sizeof(cmd_i2spcm_interface_param)) {
+		fprintf(stderr, "Failed to write I2SPCM_INTERFACE_PARAM command\n");
+		return -1;
+	}
+
+	if (read_hci_event(fd, resp, sizeof(resp)) < CC_MIN_SIZE) {
+		fprintf(stderr, "Failed to write I2SPCM_INTERFACE_PARAM, invalid HCI event\n");
+		return -1;
+	}
+
+	if (resp[6] != CMD_SUCCESS) {
+		fprintf(stderr, "Failed to write I2SPCM_INTERFACE_PARAM, command failure\n");
+		return -1;
+	}
+
+	tcflush(fd, TCIOFLUSH);
+
+	if (write(fd, cmd_sco_pcm_int_param,
+            sizeof(cmd_sco_pcm_int_param)) != sizeof(cmd_sco_pcm_int_param)) {
+		fprintf(stderr, "Failed to write SCO_PCM_INT_PARAM command\n");
+		return -1;
+	}
+
+	if (read_hci_event(fd, resp, sizeof(resp)) < CC_MIN_SIZE) {
+		fprintf(stderr, "Failed to write SCO_PCM_INT_PARAM, invalid HCI event\n");
+		return -1;
+	}
+
+	if (resp[6] != CMD_SUCCESS) {
+		fprintf(stderr, "Failed to write SCO_PCM_INT_PARAM, command failure\n");
+		return -1;
+	}
+
+	tcflush(fd, TCIOFLUSH);
+
+	if (write(fd, cmd_sco_pcm_data_format,
+            sizeof(cmd_sco_pcm_data_format)) != sizeof(cmd_sco_pcm_data_format)) {
+		fprintf(stderr, "Failed to write WRITE_PCM_DATA_FORMAT_PARAM command\n");
+		return -1;
+	}
+
+	if (read_hci_event(fd, resp, sizeof(resp)) < CC_MIN_SIZE) {
+		fprintf(stderr, "Failed to write WRITE_PCM_DATA_FORMAT_PARAM, invalid HCI event\n");
+		return -1;
+	}
+
+	if (resp[6] != CMD_SUCCESS) {
+		fprintf(stderr, "Failed to write WRITE_PCM_DATA_FORMAT_PARAM, command failure\n");
 		return -1;
 	}
 
@@ -367,6 +450,9 @@ int bcm43xx_init(int fd, int speed, struct termios *ti, const char *bdaddr)
 
 	if (bdaddr)
 		bcm43xx_set_bdaddr(fd, bdaddr);
+
+	if (bcm43xx_set_sco_config(fd, CONFIG_NBS))
+		return -1;
 
 	if (speed > 3000000 && bcm43xx_set_clock(fd, BCM43XX_CLOCK_48))
 		return -1;
