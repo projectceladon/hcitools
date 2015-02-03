@@ -329,15 +329,23 @@ static int intel(int fd, struct uart_t *u, struct termios *ti)
 
 static int bcm43xx(int fd, struct uart_t *u, struct termios *ti)
 {
-	return bcm43xx_init(fd, u->speed, ti, u->bdaddr);
+	return bcm43xx_init(fd, u->init_speed, u->speed, ti, u->bdaddr, u->pm);
 }
 
 //Realtek_add_start
 //add realtek Bluetooth init and post function.
 static int realtek_init(int fd, struct uart_t *u, struct termios *ti)
 {
+	int ret;
+
 	fprintf(stderr, "Realtek Bluetooth init uart with init speed:%d, final_speed:%d, type:HCI UART %s\n", u->init_speed, u->speed, (u->proto == HCI_UART_H4)? "H4":"H5" );
-	return rtk_init(fd, u->proto, u->speed, ti);
+	ret = rtk_init(fd, u->proto, u->speed, ti);
+	if (ret > 0) {
+		u->speed = ret;
+		ret = 0;
+	}
+
+	return ret;
 }
 
 static int realtek_post(int fd, struct uart_t *u, struct termios *ti)
@@ -1156,7 +1164,7 @@ struct uart_t uart[] = {
 
 	/* Broadcom BCM43XX */
 	{ "bcm43xx",    0x0000, 0x0000, HCI_UART_H4,   115200, 3000000,
-				FLOW_CTL, DISABLE_PM, NULL, bcm43xx, NULL  },
+				FLOW_CTL, ENABLE_PM, NULL, bcm43xx, NULL  },
 
 	{ "ath3k",    0x0000, 0x0000, HCI_UART_ATH3K, 115200, 115200,
 			FLOW_CTL, DISABLE_PM, NULL, ath3k_ps, ath3k_pm  },

@@ -73,11 +73,11 @@
 #else
 #error "Unknown byte order"
 #endif
-typedef unsigned char		RT_U8,   *PRT_U8;
-typedef unsigned short		RT_U16,  *PRT_U16;
-typedef signed int		RT_S32,  *PRT_S32;
-typedef unsigned int            RT_U32,  *PRT_U32;      //long is 32 bit,K.C
-typedef signed char             RT_S8,   *PRT_S8;
+typedef uint8_t		RT_U8,   *PRT_U8;
+typedef uint16_t		RT_U16,  *PRT_U16;
+typedef int32_t		RT_S32,  *PRT_S32;
+typedef uint32_t           RT_U32,  *PRT_U32;      //long is 32 bit,K.C
+typedef int8_t             RT_S8,   *PRT_S8;
 
 //log related
 #define LOG_STR "Realtek Bluetooth"
@@ -440,7 +440,7 @@ static void skb_trim(struct sk_buff *skb, unsigned int len)
   if (skb->data_len > len) {
     skb->data_len = len;
   } else {
-    RS_ERR("Error: skb->data_len(%ld) < len(%d)", skb->data_len, len);
+    RS_ERR("Error: skb->data_len(%d) < len(%d)", skb->data_len, len);
   }
 }
 
@@ -1467,7 +1467,7 @@ static const char *get_firmware_name()
 *
 */
 
-RT_U32 rtk_parse_config_file(RT_U8* config_buf, size_t filelen, char bt_addr[6])
+RT_U32 rtk_parse_config_file(RT_U8* config_buf, size_t filelen, unsigned char bt_addr[6])
 {
   struct rtk_bt_vendor_config* config = (struct rtk_bt_vendor_config*) config_buf;
   RT_U16 config_len = le16_to_cpu(config->data_len), temp = 0;
@@ -1524,7 +1524,7 @@ RT_U32 rtk_parse_config_file(RT_U8* config_buf, size_t filelen, char bt_addr[6])
 * @param bt_addr where bt addr is stored
 *
 */
-static void rtk_get_ram_addr(char bt_addr[0])
+static void rtk_get_ram_addr(unsigned char bt_addr[0])
 {
   srand(time(NULL)+getpid()+getpid()*987654+rand());
 
@@ -1542,7 +1542,7 @@ static void rtk_get_ram_addr(char bt_addr[0])
 * @param bt_addr where bt addr is stored
 *
 */
-static void rtk_write_btmac2file(char bt_addr[6])
+static void rtk_write_btmac2file(unsigned char bt_addr[6])
 {
   int fd;
   mkdir(BT_ADDR_DIR, 0777);
@@ -1575,7 +1575,7 @@ int rtk_get_bt_config(unsigned char** config_buf, RT_U32* config_baud_rate)
 {
   char bt_config_file_name[PATH_MAX] = {0};
   RT_U8* bt_addr_temp = NULL;
-  char bt_addr[6]={0x00, 0xe0, 0x4c, 0x88, 0x88, 0x88};
+  unsigned char bt_addr[6]={0x00, 0xe0, 0x4c, 0x88, 0x88, 0x88};
   struct stat st;
   size_t filelen;
   int fd;
@@ -2258,9 +2258,9 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
   RT_U8* epatch_buf = NULL;
   int epatch_length = -1;
   struct rtk_epatch* epatch_info = NULL;
-  struct rtk_epatch_entry current_entry;
+  struct rtk_epatch_entry current_entry = {0x00, 0x00, 0x00};
   RT_U8 need_download_fw = 1;
-  struct rtk_extension_entry patch_lmp;
+  struct rtk_extension_entry patch_lmp = {0x00, 0x00, 0x00};
 	
   config_len = rtk_get_bt_config(&config_file_buf, &baudrate);
   if (config_len < 0) {
@@ -2325,10 +2325,10 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
           temp -= *(temp-1)+2;
         }while(*temp != 0xFF);
 
-        if(lmp_version != project_id[*(patch_lmp.data)]) {
+        if(patch_lmp.data && lmp_version != project_id[*(patch_lmp.data)]) {
           RS_ERR("lmp_version is %x, project_id is %x, does not match!!!",lmp_version,project_id[*(patch_lmp.data)]);
           need_download_fw = 0;
-        } else {
+        } else if (patch_lmp.data) {
           RS_DBG("lmp_version is %x, project_id is %x, match!",lmp_version, project_id[*(patch_lmp.data)]);
 
           if(memcmp(epatch_buf, RTK_EPATCH_SIGNATURE, 8) != 0) {
@@ -2376,6 +2376,9 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
             }	
           }															
         }
+
+        if (patch_lmp.data)
+          free(patch_lmp.data);
       }					
     }					
   }
@@ -2428,8 +2431,11 @@ DOWNLOAD_FW:
     rtk_patch.nRxIndex = -1;
 
     rtk_download_fw_config(fd, buf, buf_len, baudrate, proto,ti);
-    free(buf);
   }
+
+  if (buf)
+    free(buf);
+
   RS_DBG("Init Process finished");
   return 0;
 }
@@ -2446,13 +2452,22 @@ DOWNLOAD_FW:
 int rtk_init(int fd, int proto, int speed, struct termios *ti)
 {
   struct sigaction sa;
-  int retlen;
+  int ret;
   RS_DBG("Realtek hciattach version %s \n",RTK_VERSION);
 
   if (proto == HCI_UART_3WIRE) {//h4 will do nothing for init
     rtk_init_h5(fd, ti);
   }
-  return rtk_config(fd, proto, speed, ti);
+
+  ret = rtk_config(fd, proto, speed, ti);
+  if (ret)
+    return -1;
+
+  /* Force H5 unsync, a new session will be started by kernel */
+  h5_tshy_sig_alarm(0);
+  usleep(100000);
+
+  return gFinalSpeed;
 }
 
 /**
@@ -2465,8 +2480,5 @@ int rtk_init(int fd, int proto, int speed, struct termios *ti)
 */
 int rtk_post(int fd, int proto, struct termios *ti)
 {
-  if (gFinalSpeed) {
-    return set_speed(fd, ti, gFinalSpeed);
-  }
   return 0;
 }
