@@ -236,33 +236,33 @@ static int bcm43xx_set_sco_config(int fd, uint32_t speech_cfg)
 	return 0;
 }
 
-static int bcm43xx_set_clock(int fd, unsigned char clock)                        
-{                                                                                
-        unsigned char cmd[] = { HCI_COMMAND_PKT, 0x45, 0xfc, 0x01, 0x00 };       
-        unsigned char resp[CC_MIN_SIZE];                                         
-                                                                                 
-        printf("Set Controller clock (%d)\n", clock);                            
-                                                                                 
-        cmd[4] = clock;                                                          
-                                                                                 
-        tcflush(fd, TCIOFLUSH);                                                  
-                                                                                 
-        if (write(fd, cmd, sizeof(cmd)) != sizeof(cmd)) {                        
-                fprintf(stderr, "Failed to write update clock command\n");       
-                return -1;                                                       
-        }                                                                        
-                                                                                 
-        if (read_hci_event(fd, resp, sizeof(resp)) < CC_MIN_SIZE) {              
-                fprintf(stderr, "Failed to update clock, invalid HCI event\n");  
-                return -1;                                                       
-        }                                                                        
-                                                                                 
-        if (resp[4] != cmd[1] || resp[5] != cmd[2] || resp[6] != CMD_SUCCESS) {  
-                fprintf(stderr, "Failed to update clock, command failure\n");    
-                return -1;                                                       
-        }                                                                        
-                                                                                 
-        return 0;                                                                
+static int bcm43xx_set_clock(int fd, unsigned char clock)
+{
+        unsigned char cmd[] = { HCI_COMMAND_PKT, 0x45, 0xfc, 0x01, 0x00 };
+        unsigned char resp[CC_MIN_SIZE];
+
+        printf("Set Controller clock (%d)\n", clock);
+
+        cmd[4] = clock;
+
+        tcflush(fd, TCIOFLUSH);
+
+        if (write(fd, cmd, sizeof(cmd)) != sizeof(cmd)) {
+                fprintf(stderr, "Failed to write update clock command\n");
+                return -1;
+        }
+
+        if (read_hci_event(fd, resp, sizeof(resp)) < CC_MIN_SIZE) {
+                fprintf(stderr, "Failed to update clock, invalid HCI event\n");
+                return -1;
+        }
+
+        if (resp[4] != cmd[1] || resp[5] != cmd[2] || resp[6] != CMD_SUCCESS) {
+                fprintf(stderr, "Failed to update clock, command failure\n");
+                return -1;
+        }
+
+        return 0;
 }
 
 static int bcm43xx_set_speed(int fd, struct termios *ti, uint32_t speed)
