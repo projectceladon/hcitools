@@ -59,7 +59,7 @@
 #include "hciattach.h"
 
 #define BAUDRATE_4BYTES
-#define RTK_VERSION "2.3" 
+#define RTK_VERSION "2.3"
 #if __BYTE_ORDER == __LITTLE_ENDIAN
 #define cpu_to_le16(d)  (d)
 #define cpu_to_le32(d)  (d)
@@ -73,11 +73,11 @@
 #else
 #error "Unknown byte order"
 #endif
-typedef unsigned char		RT_U8,   *PRT_U8;
-typedef unsigned short		RT_U16,  *PRT_U16;
-typedef signed int		RT_S32,  *PRT_S32;
-typedef unsigned int            RT_U32,  *PRT_U32;      //long is 32 bit,K.C
-typedef signed char             RT_S8,   *PRT_S8;
+typedef uint8_t		RT_U8,   *PRT_U8;
+typedef uint16_t		RT_U16,  *PRT_U16;
+typedef int32_t		RT_S32,  *PRT_S32;
+typedef uint32_t           RT_U32,  *PRT_U32;      //long is 32 bit,K.C
+typedef int8_t             RT_S8,   *PRT_S8;
 
 //log related
 #define LOG_STR "Realtek Bluetooth"
@@ -141,9 +141,9 @@ struct hci_ev_cmd_complete {
 #define HCI_VENDOR_READ_LMP_VERISION 0x1001
 
 #define ROM_LMP_8723a               0x1200
-#define ROM_LMP_8723b               0x8723       
+#define ROM_LMP_8723b               0x8723
 #define ROM_LMP_8821a               0X8821
-#define ROM_LMP_8761a               0X8761 
+#define ROM_LMP_8761a               0X8761
 
 #define RTK_VENDOR_CONFIG_MAGIC 0x8723ab55
 struct rtk_bt_vendor_config_entry {
@@ -209,12 +209,12 @@ int gFinalSpeed = 0;
 #define FIRMWARE_DIRECTORY "/system/etc/firmware/bt/"
 #define BT_CONFIG_DIRECTORY "/system/etc/firmware/bt/"
 
-#else //for Linux 
+#else //for Linux
 #define FIRMWARE_DIRECTORY_OLD "/system/etc/firmware/rtl8723as/"
 #define BT_CONFIG_DIRECTORY_OLD "/system/etc/firmware/rtl8723as/"
 #define FIRMWARE_DIRECTORY "/lib/firmware/rtlbt/"
 #define BT_CONFIG_DIRECTORY "/lib/firmware/rtlbt/"
-#endif 
+#endif
 
 #define PATCH_DATA_FIELD_MAX_SIZE     252
 #define READ_DATA_SIZE  16
@@ -440,7 +440,7 @@ static void skb_trim(struct sk_buff *skb, unsigned int len)
   if (skb->data_len > len) {
     skb->data_len = len;
   } else {
-    RS_ERR("Error: skb->data_len(%ld) < len(%d)", skb->data_len, len);
+    RS_ERR("Error: skb->data_len(%d) < len(%d)", skb->data_len, len);
   }
 }
 
@@ -825,12 +825,12 @@ static void hci_event_cmd_complete(struct sk_buff* skb)
         ghci_version_cmd_state = event_received;
         status = skb->data[0];
         RS_DBG("Read RTK LMP version with Status:%x", status);
-        if (0 == status) 
+        if (0 == status)
           lmp_version= le16_to_cpu(*(RT_U16*)(&skb->data[7]));
         else {
           RS_ERR("READ_RTK_ROM_VERISION return status error!");
           //Need to do more
-        }				
+        }
         skb_free(rtk_h5.host_last_cmd);
         rtk_h5.host_last_cmd = NULL;
         break;
@@ -838,10 +838,10 @@ static void hci_event_cmd_complete(struct sk_buff* skb)
         gRom_version_cmd_state = event_received;
         status = skb->data[0];
         RS_DBG("Read RTK rom version with Status:%x", status);
-        if (0 == status) 
+        if (0 == status)
           gEVersion = skb->data[1];
         else if(1 == status)
-          gEVersion = 0; 
+          gEVersion = 0;
         else {
           RS_ERR("READ_RTK_ROM_VERISION return status error!");
           //Need to do more
@@ -1467,7 +1467,7 @@ static const char *get_firmware_name()
 *
 */
 
-RT_U32 rtk_parse_config_file(RT_U8* config_buf, size_t filelen, char bt_addr[6])
+RT_U32 rtk_parse_config_file(RT_U8* config_buf, size_t filelen, unsigned char bt_addr[6])
 {
   struct rtk_bt_vendor_config* config = (struct rtk_bt_vendor_config*) config_buf;
   RT_U16 config_len = le16_to_cpu(config->data_len), temp = 0;
@@ -1524,7 +1524,7 @@ RT_U32 rtk_parse_config_file(RT_U8* config_buf, size_t filelen, char bt_addr[6])
 * @param bt_addr where bt addr is stored
 *
 */
-static void rtk_get_ram_addr(char bt_addr[0])
+static void rtk_get_ram_addr(unsigned char bt_addr[0])
 {
   srand(time(NULL)+getpid()+getpid()*987654+rand());
 
@@ -1542,7 +1542,7 @@ static void rtk_get_ram_addr(char bt_addr[0])
 * @param bt_addr where bt addr is stored
 *
 */
-static void rtk_write_btmac2file(char bt_addr[6])
+static void rtk_write_btmac2file(unsigned char bt_addr[6])
 {
   int fd;
   mkdir(BT_ADDR_DIR, 0777);
@@ -1575,7 +1575,7 @@ int rtk_get_bt_config(unsigned char** config_buf, RT_U32* config_baud_rate)
 {
   char bt_config_file_name[PATH_MAX] = {0};
   RT_U8* bt_addr_temp = NULL;
-  char bt_addr[6]={0x00, 0xe0, 0x4c, 0x88, 0x88, 0x88};
+  unsigned char bt_addr[6]={0x00, 0xe0, 0x4c, 0x88, 0x88, 0x88};
   struct stat st;
   size_t filelen;
   int fd;
@@ -1633,7 +1633,7 @@ int rtk_get_bt_config(unsigned char** config_buf, RT_U32* config_baud_rate)
   }
 
 GET_CONFIG:
-  ret = sprintf(bt_config_file_name, BT_CONFIG_DIRECTORY"rtlbt_config"); 
+  ret = sprintf(bt_config_file_name, BT_CONFIG_DIRECTORY"rtlbt_config");
   if (stat(bt_config_file_name, &st) < 0) {
     RS_ERR("can't access bt config file:%s, errno:%d\n", bt_config_file_name, errno);
     printf("no stand config, using 8723as config\n");
@@ -1644,7 +1644,7 @@ GET_CONFIG:
       printf("no old config, using 8723as config\n");
       return -1;
     }
-  } 
+  }
 
   filelen = st.st_size;
 
@@ -1977,12 +1977,12 @@ baudrate_ex baudrates[] = {
 	{0x00006004, 921600},
 	{0x05F75004, 921600},//RTL8723BS
 	{0x00004003, 1500000},
-	{0x04928002, 1500000},//RTL8723BS	
+	{0x04928002, 1500000},//RTL8723BS
 	{0x00005002, 2000000},//same as RTL8723AS
 	{0x00008001, 3000000},
-	{0x00009001, 3000000},   //Lory add new, t169 and t9e use 0x00009001. 	
+	{0x00009001, 3000000},   //Lory add new, t169 and t9e use 0x00009001.
 	{0x06DD8001, 3000000},//RTL8723BS, Baudrate: 2920000
-	{0x036D8001, 3000000},//RTL8723BS, Baudrate: 2929999    
+	{0x036D8001, 3000000},//RTL8723BS, Baudrate: 2929999
 	{0x06B58001, 3000000},//RTL8723BS, Baudrate: 2940000
 	{0x02B58001, 3000000},//RTL8723BS, Baudrate: 2945000
 	{0x02D58001, 3000000},//RTL8723BS, Baudrate: 2950000
@@ -1993,9 +1993,9 @@ baudrate_ex baudrates[] = {
 	{0x00007001, 3500000},
 	{0x052A6001, 3500000},//RTL8723BS
 	{0x00005001, 4000000},//same as RTL8723AS
-	{0x05AD9005, 547000},		
-	{0x0252C00A, 230400},	
-	{0x0000701d, 115200},	
+	{0x05AD9005, 547000},
+	{0x0252C00A, 230400},
+	{0x0000701d, 115200},
 	{0x0252C002, 115200},	//RTL8723BS
 	{0x0252C014, 115200}	//RTL8723BS
 };
@@ -2100,7 +2100,7 @@ int rtk_get_epatch(RT_U8** patch_buf, RT_U8* is_multi_patch)
 {
   int epatch_length = -1; //If get patch fail, return -1.
   *is_multi_patch = 0;
-	
+
   epatch_length = rtk_get_bt_firmware(patch_buf, 0);
   if (epatch_length < 0) {
     RS_ERR("Get BT multi firmare error");
@@ -2174,7 +2174,7 @@ void rtk_get_eversion(int dd)
     }
     h5_recv(&rtk_h5, &bytes, retlen);
   }
-  alarm(0);	
+  alarm(0);
   return;
 }
 
@@ -2231,7 +2231,7 @@ void rtk_get_lmp_version(int dd)
     }
     h5_recv(&rtk_h5, &bytes, retlen);
   }
-  alarm(0);	
+  alarm(0);
   return;
 }
 
@@ -2258,25 +2258,25 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
   RT_U8* epatch_buf = NULL;
   int epatch_length = -1;
   struct rtk_epatch* epatch_info = NULL;
-  struct rtk_epatch_entry current_entry;
+  struct rtk_epatch_entry current_entry = {0x00, 0x00, 0x00};
   RT_U8 need_download_fw = 1;
-  struct rtk_extension_entry patch_lmp;
-	
+  struct rtk_extension_entry patch_lmp = {0x00, 0x00, 0x00};
+
   config_len = rtk_get_bt_config(&config_file_buf, &baudrate);
   if (config_len < 0) {
     RS_ERR("Get Config file error, just use efuse settings");
     config_len = 0;
   }
-	
+
   /*
   * 1. if both config file and fw exists, use it and change rate according to config file
   * 2. if config file not exists while fw does, not change baudrate and only download fw
   * 3. if fw doesnot exist, only change rate to 3.25M or from config file if it exist. This case is only for early debug before any efuse is setting.
-  */		
+  */
   buf_len = rtk_get_bt_firmware(&epatch_buf, config_len);
   if (buf_len < 0) {
     RS_ERR("Get BT firmware error, continue without bt firmware");
-  } else {		
+  } else {
     //Get version from ROM
     rtk_get_lmp_version(fd);  //gEVersion is set.
     RS_DBG("gLmpVersion=0x%x", lmp_version);
@@ -2295,7 +2295,7 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
           epatch_buf = NULL;
           if (config_len) {
             memcpy(&buf[buf_len - config_len], config_file_buf, config_len);
-          }	
+          }
         }
       }
     } else {
@@ -2303,12 +2303,12 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
       rtk_get_eversion(fd);  //gEVersion is set.
       RS_DBG("gEVersion=%d", gEVersion);
 
-      //check Extension Section Field 
+      //check Extension Section Field
       if (memcmp(epatch_buf + buf_len-config_len-4 ,Extension_Section_SIGNATURE,4) != 0) {
         RS_ERR("Check Extension_Section_SIGNATURE error! do not download fw");
         need_download_fw = 0;
       } else {
-        uint8_t *temp;  
+        uint8_t *temp;
         temp = epatch_buf+buf_len-config_len-5;
         do {
           if (*temp == 0x00) {
@@ -2317,7 +2317,7 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
             if ((patch_lmp.data = malloc(patch_lmp.length))) {
               memcpy(patch_lmp.data,temp-2,patch_lmp.length);
             }
-            RS_DBG("opcode = 0x%x",patch_lmp.opcode); 
+            RS_DBG("opcode = 0x%x",patch_lmp.opcode);
             RS_DBG("length = 0x%x",patch_lmp.length);
             RS_DBG("data = 0x%x",*(patch_lmp.data));
             break;
@@ -2325,10 +2325,10 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
           temp -= *(temp-1)+2;
         }while(*temp != 0xFF);
 
-        if(lmp_version != project_id[*(patch_lmp.data)]) {
+        if(patch_lmp.data && lmp_version != project_id[*(patch_lmp.data)]) {
           RS_ERR("lmp_version is %x, project_id is %x, does not match!!!",lmp_version,project_id[*(patch_lmp.data)]);
           need_download_fw = 0;
-        } else {
+        } else if (patch_lmp.data) {
           RS_DBG("lmp_version is %x, project_id is %x, match!",lmp_version, project_id[*(patch_lmp.data)]);
 
           if(memcmp(epatch_buf, RTK_EPATCH_SIGNATURE, 8) != 0) {
@@ -2339,9 +2339,9 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
             epatch_info = (struct rtk_epatch*)epatch_buf;
             epatch_info->fm_version=le32_to_cpu(epatch_info->fm_version);
             epatch_info->number_of_total_patch=le16_to_cpu(epatch_info->number_of_total_patch);
-            RS_DBG("fm_version = 0x%x",epatch_info->fm_version); 
+            RS_DBG("fm_version = 0x%x",epatch_info->fm_version);
             RS_DBG("number_of_total_patch = %d",epatch_info->number_of_total_patch);
-							
+
             //get right epatch entry
             for (i; i<epatch_info->number_of_total_patch; i++) {
               if (le16_to_cpu(*(uint16_t*)(epatch_buf+14+2*i)) == gEVersion + 1) {
@@ -2351,14 +2351,14 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
                 break;
               }
             }
-            RS_DBG("chipID = %d",current_entry.chipID);  
-            RS_DBG("patch_length = 0x%x",current_entry.patch_length); 
-            RS_DBG("start_offset = 0x%x",current_entry.start_offset); 
-													
+            RS_DBG("chipID = %d",current_entry.chipID);
+            RS_DBG("patch_length = 0x%x",current_entry.patch_length);
+            RS_DBG("start_offset = 0x%x",current_entry.start_offset);
+
             //get right version patch: buf, buf_len
             buf_len = current_entry.patch_length + config_len;
             RS_DBG("buf_len = 0x%x",buf_len);
-													
+
             if (!(buf = malloc(buf_len))) {
               RS_ERR("Can't alloc memory for multi fw&config, errno:%d", errno);
               buf_len = -1;
@@ -2373,11 +2373,14 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
 
             if (config_len) {
               memcpy(&buf[buf_len - config_len], config_file_buf, config_len);
-            }	
-          }															
+            }
+          }
         }
-      }					
-    }					
+
+        if (patch_lmp.data)
+          free(patch_lmp.data);
+      }
+    }
   }
 
   if (config_file_buf)
@@ -2428,8 +2431,11 @@ DOWNLOAD_FW:
     rtk_patch.nRxIndex = -1;
 
     rtk_download_fw_config(fd, buf, buf_len, baudrate, proto,ti);
-    free(buf);
   }
+
+  if (buf)
+    free(buf);
+
   RS_DBG("Init Process finished");
   return 0;
 }
@@ -2446,13 +2452,22 @@ DOWNLOAD_FW:
 int rtk_init(int fd, int proto, int speed, struct termios *ti)
 {
   struct sigaction sa;
-  int retlen;
+  int ret;
   RS_DBG("Realtek hciattach version %s \n",RTK_VERSION);
 
   if (proto == HCI_UART_3WIRE) {//h4 will do nothing for init
     rtk_init_h5(fd, ti);
   }
-  return rtk_config(fd, proto, speed, ti);
+
+  ret = rtk_config(fd, proto, speed, ti);
+  if (ret)
+    return -1;
+
+  /* Force H5 unsync, a new session will be started by kernel */
+  h5_tshy_sig_alarm(0);
+  usleep(100000);
+
+  return gFinalSpeed;
 }
 
 /**
@@ -2465,8 +2480,5 @@ int rtk_init(int fd, int proto, int speed, struct termios *ti)
 */
 int rtk_post(int fd, int proto, struct termios *ti)
 {
-  if (gFinalSpeed) {
-    return set_speed(fd, ti, gFinalSpeed);
-  }
   return 0;
 }

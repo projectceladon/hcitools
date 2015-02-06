@@ -236,12 +236,44 @@ static int bcm43xx_set_sco_config(int fd, uint32_t speech_cfg)
 	return 0;
 }
 
-static int bcm43xx_set_speed(int fd, uint32_t speed)
+static int bcm43xx_set_clock(int fd, unsigned char clock)
+{
+        unsigned char cmd[] = { HCI_COMMAND_PKT, 0x45, 0xfc, 0x01, 0x00 };
+        unsigned char resp[CC_MIN_SIZE];
+
+        printf("Set Controller clock (%d)\n", clock);
+
+        cmd[4] = clock;
+
+        tcflush(fd, TCIOFLUSH);
+
+        if (write(fd, cmd, sizeof(cmd)) != sizeof(cmd)) {
+                fprintf(stderr, "Failed to write update clock command\n");
+                return -1;
+        }
+
+        if (read_hci_event(fd, resp, sizeof(resp)) < CC_MIN_SIZE) {
+                fprintf(stderr, "Failed to update clock, invalid HCI event\n");
+                return -1;
+        }
+
+        if (resp[4] != cmd[1] || resp[5] != cmd[2] || resp[6] != CMD_SUCCESS) {
+                fprintf(stderr, "Failed to update clock, command failure\n");
+                return -1;
+        }
+
+        return 0;
+}
+
+static int bcm43xx_set_speed(int fd, struct termios *ti, uint32_t speed)
 {
 	unsigned char cmd[] =
 		{ HCI_COMMAND_PKT, 0x18, 0xfc, 0x06, 0x00, 0x00,
 				0x00, 0x00, 0x00, 0x00 };
 	unsigned char resp[CC_MIN_SIZE];
+
+	if (speed > 3000000 && bcm43xx_set_clock(fd, BCM43XX_CLOCK_48))
+		return -1;
 
 	printf("Set Controller UART speed to %d bit/s\n", speed);
 
@@ -267,32 +299,8 @@ static int bcm43xx_set_speed(int fd, uint32_t speed)
 		return -1;
 	}
 
-	return 0;
-}
-
-static int bcm43xx_set_clock(int fd, unsigned char clock)
-{
-	unsigned char cmd[] = { HCI_COMMAND_PKT, 0x45, 0xfc, 0x01, 0x00 };
-	unsigned char resp[CC_MIN_SIZE];
-
-	printf("Set Controller clock (%d)\n", clock);
-
-	cmd[4] = clock;
-
-	tcflush(fd, TCIOFLUSH);
-
-	if (write(fd, cmd, sizeof(cmd)) != sizeof(cmd)) {
-		fprintf(stderr, "Failed to write update clock command\n");
-		return -1;
-	}
-
-	if (read_hci_event(fd, resp, sizeof(resp)) < CC_MIN_SIZE) {
-		fprintf(stderr, "Failed to update clock, invalid HCI event\n");
-		return -1;
-	}
-
-	if (resp[4] != cmd[1] || resp[5] != cmd[2] || resp[6] != CMD_SUCCESS) {
-		fprintf(stderr, "Failed to update clock, command failure\n");
+	if (set_speed(fd, ti, speed) < 0) {
+		perror("Can't set host baud rate");
 		return -1;
 	}
 
@@ -425,7 +433,49 @@ static int bcm43xx_locate_patch(const char *dir_name,
 	return ret;
 }
 
-int bcm43xx_init(int fd, int speed, struct termios *ti, const char *bdaddr)
+static int bcm43xx_sleep_mode(int fd)
+{
+	unsigned char resp[CC_MIN_SIZE];
+	unsigned char cmd[] = { HCI_COMMAND_PKT, 0x27, 0xfc, 0x0c,
+				0x01, /* uart(1) */
+				0x01, /* bt sleep timeout */
+				0x01, /* host sleep timeout */
+				0x01, /* bt wake, active high */
+				0x01, /* host wake, active high */
+				0x01, /* sleep during sco */
+				0x01, /* request for sleep */
+				0x00, /* fixed */
+				0x00, /* fixed */
+				0x00, /* fixed */
+				0x00, /* fixed */
+				0x00 }; /* fixed */
+
+	printf("Configure sleep mode\n");
+
+	tcflush(fd, TCIOFLUSH);
+
+	if (write(fd, cmd, sizeof(cmd)) != sizeof(cmd)) {
+		fprintf(stderr, "Failed to write sllleep mode\n");
+		return -1;
+	}
+
+	if (read_hci_event(fd, resp, sizeof(resp)) < CC_MIN_SIZE) {
+		fprintf(stderr, "Failed to write sleep mode,\
+			invalid HCI event\n");
+		return -1;
+	}
+
+	if (resp[4] != cmd[1] || resp[5] != cmd[2] || resp[6] != CMD_SUCCESS) {
+		fprintf(stderr, "Failed to write sleep mode,\
+			command failure\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+int bcm43xx_init(int fd, int def_speed, int speed, struct termios *ti,
+		const char *bdaddr, int pm)
 {
 	char chip_name[20];
 	char fw_path[PATH_MAX];
@@ -441,8 +491,17 @@ int bcm43xx_init(int fd, int speed, struct termios *ti, const char *bdaddr)
 	if (bcm43xx_locate_patch(FIRMWARE_DIR, chip_name, fw_path)) {
 		fprintf(stderr, "Patch not found, continue anyway\n");
 	} else {
+		if (bcm43xx_set_speed(fd, ti, speed))
+			return -1;
+
 		if (bcm43xx_load_firmware(fd, fw_path))
 			return -1;
+
+		/* Controller speed has been reset to def speed */
+		if (set_speed(fd, ti, def_speed) < 0) {
+			perror("Can't set host baud rate");
+			return -1;
+		}
 
 		if (bcm43xx_reset(fd))
 			return -1;
@@ -454,10 +513,10 @@ int bcm43xx_init(int fd, int speed, struct termios *ti, const char *bdaddr)
 	if (bcm43xx_set_sco_config(fd, CONFIG_NBS))
 		return -1;
 
-	if (speed > 3000000 && bcm43xx_set_clock(fd, BCM43XX_CLOCK_48))
-		return -1;
+	if (pm)
+		bcm43xx_sleep_mode(fd);
 
-	if (bcm43xx_set_speed(fd, speed))
+	if (bcm43xx_set_speed(fd, ti, speed))
 		return -1;
 
 	return 0;
