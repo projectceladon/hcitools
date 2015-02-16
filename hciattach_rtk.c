@@ -1026,13 +1026,14 @@ static int h5_recv(struct rtk_h5_struct *h5, void *data, int count)
             h5->rx_skb->data[0] & 0x07, h5->rxseq_txack);
             h5->is_txack_req = 1;
             //hci_uart_tx_wakeup(hu);
+            if (rtk_patch.nTxIndex == rtk_patch.nTotal) { //depend on weather remote will reset ack numb or not!!!!!!!!!!!!!!!special
+              rtk_h5.rxseq_txack = h5->rx_skb->data[0] & 0x07;
+            }
+
             skb_free(h5->rx_skb);
             h5->rx_state = H5_W4_PKT_DELIMITER;
             h5->rx_count = 0;
 
-		        if (rtk_patch.nTxIndex == rtk_patch.nTotal) { //depend on weather remote will reset ack numb or not!!!!!!!!!!!!!!!special
-			        rtk_h5.rxseq_txack = h5->rx_skb->data[0] & 0x07;
-		        }
             continue;
           }
 
