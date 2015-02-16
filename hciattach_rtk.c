@@ -1692,6 +1692,7 @@ int rtk_vendor_change_speed_h5(int fd, RT_U32 baudrate)
   unsigned char bytes[READ_DATA_SIZE];
   struct sigaction sa;
 
+  memset(&sa, 0, sizeof(sa));
   sa.sa_handler = h5_tinit_sig_alarm;
   sigaction(SIGALRM, &sa, NULL);
 
