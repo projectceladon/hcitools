@@ -1384,6 +1384,11 @@ int main(int argc, char *argv[])
 			dev[0] = 0;
 			if (!strchr(opt, '/'))
 				strcpy(dev, "/dev/");
+
+			if (strlen(dev) + strlen(opt) >= PATH_MAX) {
+				fprintf(stderr, "Device path too long\n");
+				exit(1);
+			}
 			strcat(dev, opt);
 			break;
 
