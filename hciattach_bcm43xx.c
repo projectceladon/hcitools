@@ -122,19 +122,20 @@ static int bcm43xx_reset(int fd)
 	return 0;
 }
 
-static int bcm43xx_set_bdaddr(int fd, const char *bdaddr)
+static int bcm43xx_set_bdaddr(int fd, bdaddr_t *bdaddr)
 {
 	unsigned char cmd[] =
 		{ HCI_COMMAND_PKT, 0x01, 0xfc, 0x06, 0x00, 0x00,
 				0x00, 0x00, 0x00, 0x00 };
 	unsigned char resp[CC_MIN_SIZE];
+	int i;
 
-	printf("Set BDADDR UART: %s\n", bdaddr);
+	printf("Set BDADDR UART:");
+	for (i = 5; i >= 0; i--)
+		printf(" %02x", bdaddr->b[i]);
+	printf("\n");
 
-	if (str2ba(bdaddr, (bdaddr_t *) (&cmd[4])) < 0) {
-		fprintf(stderr, "Incorrect bdaddr\n");
-		return -1;
-	}
+	memcpy(&cmd[4], bdaddr, 6);
 
 	tcflush(fd, TCIOFLUSH);
 
@@ -474,13 +475,75 @@ static int bcm43xx_sleep_mode(int fd)
 	return 0;
 }
 
+static int bcm43xx_read_bdaddr(int fd, bdaddr_t *bdaddr)
+{
+	unsigned char cmd[] = { HCI_COMMAND_PKT, 0x09, 0x10, 0x00 };
+	unsigned char resp[CC_MIN_SIZE + 6];
+	int i;
+
+	printf("Read BD addr:");
+
+	tcflush(fd, TCIOFLUSH);
+
+	if (write(fd, cmd, sizeof(cmd)) != sizeof(cmd)) {
+		fprintf(stderr, "Failed to write read bdaddr command\n");
+		return -1;
+	}
+
+	if (read_hci_event(fd, resp, sizeof(resp)) < CC_MIN_SIZE) {
+		fprintf(stderr, "Failed to read bdaddr, invalid HCI event\n");
+		return -1;
+	}
+
+	if (resp[4] != cmd[1] || resp[5] != cmd[2] || resp[6] != CMD_SUCCESS) {
+		fprintf(stderr, "Failed to read bdaddr, command failure\n");
+		return -1;
+	}
+
+	memcpy(bdaddr, &resp[7], 6);
+
+	for (i = 5; i >= 0; i--)
+		printf(" %02x", bdaddr->b[i]);
+
+	printf("\n");
+
+	return 0;
+}
+
+const bdaddr_t bcm_def_addr = { {0x00, 0x00, 0x00, 0xb1, 0x30, 0x43} };
+const bdaddr_t bcm_inv_addr = { {0x00, 0x00, 0x00, 0x00, 0x00, 0x00} };
+
+static int bcm43xx_check_addr(const bdaddr_t *bdaddr) {
+	if (!memcmp(bdaddr, &bcm_def_addr, 6)) {
+		printf("warning: broadcom default bdaddr\n");
+		return -1;
+	}
+
+	if (!memcmp(bdaddr, &bcm_inv_addr, 6)) {
+		printf("warning: invalid bdaddr\n");
+		return -1;
+	}
+
+	return 0;
+}
+
 int bcm43xx_init(int fd, int def_speed, int speed, struct termios *ti,
 		const char *bdaddr, int pm)
 {
 	char chip_name[20];
 	char fw_path[PATH_MAX];
+	bdaddr_t init_bdaddr;
+	bdaddr_t fw_bdaddr;
+	bdaddr_t manual_bdaddr;
 
 	printf("bcm43xx_init\n");
+
+	if (bdaddr && (str2ba(bdaddr, &manual_bdaddr) < 0)) {
+		fprintf(stderr, "Incorrect bdaddr\n");
+		return -1;
+	}
+
+	bcm43xx_read_bdaddr(fd, &init_bdaddr);
 
 	if (bcm43xx_reset(fd))
 		return -1;
@@ -507,8 +570,12 @@ int bcm43xx_init(int fd, int def_speed, int speed, struct termios *ti,
 			return -1;
 	}
 
+	bcm43xx_read_bdaddr(fd, &fw_bdaddr);
+
 	if (bdaddr)
-		bcm43xx_set_bdaddr(fd, bdaddr);
+		bcm43xx_set_bdaddr(fd, &manual_bdaddr);
+	else if (bcm43xx_check_addr(&fw_bdaddr))
+		bcm43xx_set_bdaddr(fd, &init_bdaddr);
 
 	if (bcm43xx_set_sco_config(fd, CONFIG_NBS))
 		return -1;
