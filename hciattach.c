@@ -1308,7 +1308,7 @@ static void usage(void)
 {
 	printf("hciattach - HCI UART driver initialization utility\n");
 	printf("Usage:\n");
-	printf("\thciattach [-n] [-p] [-b] [-r] [-t timeout] [-s initial_speed] <tty> <type | id> [speed] [flow|noflow] [bdaddr] [sleep_mode]\n");
+	printf("\thciattach [-n] [-p] [-b] [-r] [-t timeout] [-s initial_speed] <tty> <type | id> [speed] [flow|noflow] [sleep] [bdaddr]\n");
 	printf("\thciattach -l\n");
 }
 
@@ -1420,15 +1420,15 @@ int main(int argc, char *argv[])
 			break;
 
 		case 4:
-			u->bdaddr = argv[optind];
-			break;
-
-		case 5:
 			if (!strcmp("sleep", argv[optind]))
 				u->pm = ENABLE_PM;
 			else
 				u->pm = DISABLE_PM;
 			break;
+
+		case 5:
+                        u->bdaddr = argv[optind];
+                        break;
 		}
 	}
 
