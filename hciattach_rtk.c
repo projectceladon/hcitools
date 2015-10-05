@@ -1162,6 +1162,19 @@ static void h5_tshy_sig_alarm(int sig)
   exit(1);
 }
 
+static void h5_unsync_after_init()
+{
+  int len;
+  unsigned char h5sync[2] = {0x01, 0x7E};
+  struct sk_buff *nskb = h5_prepare_pkt(&rtk_h5, h5sync, sizeof(h5sync), H5_LINK_CTL_PKT);
+  if (!nskb)
+    return;
+  len = write(serial_fd, nskb->data, nskb->data_len);
+
+  RS_DBG("3-wire sync pattern data_len: %d, len: %d\n", nskb->data_len, len);
+  skb_free(nskb);
+}
+
 /**
 * Retry to config when timeout in h5 proto, max retry times is 10.
 *
@@ -2466,7 +2479,7 @@ int rtk_init(int fd, int proto, int speed, struct termios *ti)
     return -1;
 
   /* Force H5 unsync, a new session will be started by kernel */
-  h5_tshy_sig_alarm(0);
+  h5_unsync_after_init();
   usleep(100000);
 
   return gFinalSpeed;
