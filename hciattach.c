@@ -332,6 +332,29 @@ static int bcm43xx(int fd, struct uart_t *u, struct termios *ti)
 	return bcm43xx_init(fd, u->init_speed, u->speed, ti, u->bdaddr, u->pm);
 }
 
+static int ag6xx_init(int fd, struct uart_t *u, struct termios *ti)
+{
+	int ret;
+
+#define IMC_IDI_MAGIC 'i'
+#define IMC_IDI_BT_SET_POWER_STATE _IOWR(IMC_IDI_MAGIC, 1, unsigned long)
+#define IMC_IDI_BT_DISABLE_SIGNALING _IO(IMC_IDI_MAGIC, 7)
+
+	/* Power-OFF, don't test returned value, error if already off */
+	ioctl(fd, IMC_IDI_BT_SET_POWER_STATE, 5);
+	ioctl(fd, IMC_IDI_BT_DISABLE_SIGNALING, NULL);
+
+	/* Power-On */
+	tcflush(fd, TCIOFLUSH);
+	ret = ioctl(fd, IMC_IDI_BT_SET_POWER_STATE, 0);
+	if (ret) {
+		fprintf(stderr, "Powering ON failed\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 //Realtek_add_start
 //add realtek Bluetooth init and post function.
 static int realtek_init(int fd, struct uart_t *u, struct termios *ti)
@@ -1176,6 +1199,10 @@ struct uart_t uart[] = {
 	/* Intel Bluetooth Module */
 	{ "intel",      0x0000, 0x0000, HCI_UART_H4,   115200, 115200,
 			FLOW_CTL, DISABLE_PM, NULL, intel, NULL },
+
+#define HCI_UART_AG6XX 9
+	{ "ag6xx",        0x0000, 0x0000, HCI_UART_AG6XX, 115200, 115200,
+                        FLOW_CTL, DISABLE_PM, NULL, ag6xx_init, NULL },
 
 	/* Three-wire UART */
 	{ "3wire",      0x0000, 0x0000, HCI_UART_3WIRE, 115200, 115200,
