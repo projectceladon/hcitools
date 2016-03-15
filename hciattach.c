@@ -351,7 +351,7 @@ static int ag6xx_init(int fd, struct uart_t *u, struct termios *ti)
 		fprintf(stderr, "Powering ON failed\n");
 		return -EINVAL;
 	}
-
+	usleep(40000);
 	return 0;
 }
 
