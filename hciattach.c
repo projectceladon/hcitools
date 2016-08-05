@@ -1204,6 +1204,10 @@ struct uart_t uart[] = {
 	{ "ag6xx",        0x0000, 0x0000, HCI_UART_AG6XX, 115200, 115200,
                         FLOW_CTL, DISABLE_PM, NULL, ag6xx_init, NULL },
 
+#define HCI_UART_MRVL 10
+	{ "marvell", 0x0000, 0x0000, HCI_UART_MRVL, 115200, 115200,
+                        0, DISABLE_PM, NULL, NULL, NULL },
+
 	/* Three-wire UART */
 	{ "3wire",      0x0000, 0x0000, HCI_UART_3WIRE, 115200, 115200,
 			0, DISABLE_PM, NULL, NULL, NULL },
