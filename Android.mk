@@ -5,6 +5,8 @@ LOCAL_MODULE := hcitool
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SRC_FILES := hcitool.c
 LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c lib/sdp.c
+LOCAL_CFLAGS += -Wno-unused-parameter -Wno-pointer-arith \
+                -Wno-missing-field-initializers
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
@@ -14,6 +16,8 @@ LOCAL_MODULE := hciconfig
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SRC_FILES := hciconfig.c csr.c
 LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c lib/sdp.c
+LOCAL_CFLAGS += -Wno-unused-parameter -Wno-pointer-arith \
+                -Wno-missing-field-initializers
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
@@ -30,7 +34,9 @@ LOCAL_SRC_FILES := monitor/main.c monitor/mainloop.c \
 		monitor/uuid.c monitor/sdp.c \
 		monitor/crc.c monitor/ll.c
 LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c lib/sdp.c
-LOCAL_CFLAGS += -DVERSION=\"5.10\"
+LOCAL_CFLAGS += -DVERSION=\"5.10\" \
+                -Wno-unused-parameter -Wno-pointer-arith \
+                -Wno-missing-field-initializers
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
@@ -45,7 +51,10 @@ LOCAL_SRC_FILES := hciattach.c \
 		hciattach_qualcomm.c hciattach_intel.c \
 		hciattach_bcm43xx.c hciattach_rtk.c
 LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c lib/sdp.c
-LOCAL_CFLAGS += -DFIRMWARE_DIR=\"/vendor/firmware\"
+LOCAL_CFLAGS += -DFIRMWARE_DIR=\"/vendor/firmware\" \
+                -Wno-unused-parameter -Wno-pointer-arith \
+                -Wno-missing-field-initializers \
+                -Wno-for-loop-analysis
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
