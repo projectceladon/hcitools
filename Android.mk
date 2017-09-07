@@ -54,7 +54,7 @@ LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c lib/sdp.c
 LOCAL_CFLAGS += -DFIRMWARE_DIR=\"/vendor/firmware\" \
                 -Wno-unused-parameter -Wno-pointer-arith \
                 -Wno-missing-field-initializers \
-                -Wno-for-loop-analysis
+                -Wno-for-loop-analysis -Wno-format
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
