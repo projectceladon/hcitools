@@ -482,17 +482,6 @@ static void h5_crc_update(RT_U16 *crc, RT_U8 d)
   *crc = reg;
 }
 
-struct __una_u16 { RT_U16 x; };
-static __inline RT_U16 __get_unaligned_cpu16(const void *p)
-{
-  const struct __una_u16 *ptr = (const struct __una_u16 *)p;
-  return ptr->x;
-}
-
-static __inline RT_U16 get_unaligned_be16(const void *p)
-{
-  return __get_unaligned_cpu16((const RT_U8 *)p);
-}
 /**
 * Get crc data.
 *
@@ -785,7 +774,6 @@ static void rtk_send_pure_ack_down(int fd)
 */
 static void hci_event_cmd_complete(struct sk_buff* skb)
 {
-  struct hci_event_hdr *hdr = (struct hci_event_hdr *) skb->data;
   struct hci_ev_cmd_complete* ev = NULL;
   RT_U16 opcode = 0;
   RT_U8 status = 0;
@@ -1253,7 +1241,7 @@ static void h5_tpatch_sig_alarm(int sig)
   if (retries < h5_max_retries) {
     printf("patch timerout, retry:\n");
     if (rtk_h5.host_last_cmd) {
-      int len = write(serial_fd, rtk_h5.host_last_cmd->data, rtk_h5.host_last_cmd->data_len);
+      write(serial_fd, rtk_h5.host_last_cmd->data, rtk_h5.host_last_cmd->data_len);
       RS_DBG("3-wire download patch re send:%d", retries );
     }
     retries++;
@@ -1616,9 +1604,6 @@ int rtk_get_bt_config(unsigned char** config_buf, RT_U32* config_baud_rate)
     RS_ERR("Can't open bt btaddr file, just use preset BT Addr");
     //rtk_get_ram_addr(&bt_addr[2]);
   } else {
-    int i = 0;
-    char temp;
-
     fscanf(file, "%2x:%2x:%2x:%2x:%2x:%2x", (unsigned int *)&bt_addr[0], (unsigned int*)&bt_addr[1], (unsigned int*)&bt_addr[2], (unsigned int*)&bt_addr[3], (unsigned int*)&bt_addr[4], (unsigned int*)&bt_addr[5]);
     //do not set bt_add[0] to zero
     /*reserve LAP addr from 0x9e8b00 to 0x9e8b3f, change to 0x008b***/
@@ -2139,7 +2124,7 @@ static void rtk_get_eversion_timeout(int sig)
   if (retries < h5_max_retries) {
     printf("patch timerout, retry:\n");
     if (rtk_h5.host_last_cmd) {
-      int len = write(serial_fd, rtk_h5.host_last_cmd->data, rtk_h5.host_last_cmd->data_len);
+      write(serial_fd, rtk_h5.host_last_cmd->data, rtk_h5.host_last_cmd->data_len);
       RS_DBG("3-wire download patch re send:%d", retries );
     }
     retries++;
@@ -2200,7 +2185,7 @@ static void rtk_get_lmp_version_timeout(int sig)
   if (retries < h5_max_retries) {
     printf("patch timerout, retry:\n");
     if (rtk_h5.host_last_cmd) {
-      int len = write(serial_fd, rtk_h5.host_last_cmd->data, rtk_h5.host_last_cmd->data_len);
+      write(serial_fd, rtk_h5.host_last_cmd->data, rtk_h5.host_last_cmd->data_len);
       RS_DBG("3-wire download patch re send:%d", retries );
     }
     retries++;
@@ -2265,13 +2250,10 @@ void rtk_get_lmp_version(int dd)
 static int rtk_config(int fd, int proto, int speed, struct termios *ti)
 {
   int config_len = -1, buf_len, final_speed = 0;
-  size_t fw_size = 0, filesize;
   RT_U8* buf = NULL, *config_file_buf = NULL;
   RT_U32 baudrate = 0;
 
-  RT_U8 is_multi_patch = 0;
   RT_U8* epatch_buf = NULL;
-  int epatch_length = -1;
   struct rtk_epatch* epatch_info = NULL;
   struct rtk_epatch_entry current_entry = {0x00, 0x00, 0x00};
   RT_U8 need_download_fw = 1;
@@ -2358,7 +2340,7 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
             RS_DBG("number_of_total_patch = %d",epatch_info->number_of_total_patch);
 
             //get right epatch entry
-            for (i; i<epatch_info->number_of_total_patch; i++) {
+            for (; i<epatch_info->number_of_total_patch; i++) {
               if (le16_to_cpu(*(uint16_t*)(epatch_buf+14+2*i)) == gEVersion + 1) {
                 current_entry.chipID = gEVersion + 1;
                 current_entry.patch_length = le16_to_cpu(*(uint16_t*)(epatch_buf+14+2*epatch_info->number_of_total_patch+2*i));
@@ -2466,7 +2448,6 @@ DOWNLOAD_FW:
 */
 int rtk_init(int fd, int proto, int speed, struct termios *ti)
 {
-  struct sigaction sa;
   int ret;
   RS_DBG("Realtek hciattach version %s \n",RTK_VERSION);
 
