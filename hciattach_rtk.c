@@ -986,7 +986,6 @@ static int h5_recv(struct rtk_h5_struct *h5, void *data, int count)
     if (h5->rx_count) {
       if (*ptr == 0xc0) {
         RS_ERR("short h5 packet");
-        skb_free(h5->rx_skb);
         h5->rx_state = H5_W4_PKT_START;
         h5->rx_count = 0;
       } else {
@@ -1002,7 +1001,6 @@ static int h5_recv(struct rtk_h5_struct *h5, void *data, int count)
           if ((0xff & (RT_U8) ~ (h5->rx_skb->data[0] + h5->rx_skb->data[1] +
               h5->rx_skb->data[2])) != h5->rx_skb->data[3]) {
             RS_ERR("h5 hdr checksum error!!!");
-            skb_free(h5->rx_skb);
             h5->rx_state = H5_W4_PKT_DELIMITER;
             h5->rx_count = 0;
             continue;
@@ -1018,7 +1016,6 @@ static int h5_recv(struct rtk_h5_struct *h5, void *data, int count)
               rtk_h5.rxseq_txack = h5->rx_skb->data[0] & 0x07;
             }
 
-            skb_free(h5->rx_skb);
             h5->rx_state = H5_W4_PKT_DELIMITER;
             h5->rx_count = 0;
 
@@ -1044,7 +1041,6 @@ static int h5_recv(struct rtk_h5_struct *h5, void *data, int count)
           if (bit_rev16(h5->message_crc) != h5_get_crc(h5)) {
             RS_ERR("Checksum failed, computed(%04x)received(%04x)",
             bit_rev16(h5->message_crc), h5_get_crc(h5));
-            skb_free(h5->rx_skb);
             h5->rx_state = H5_W4_PKT_DELIMITER;
             h5->rx_count = 0;
             continue;
@@ -1089,6 +1085,7 @@ static int h5_recv(struct rtk_h5_struct *h5, void *data, int count)
           break;
     }
   }
+  skb_free(h5->rx_skb);
   return count;
 }
 

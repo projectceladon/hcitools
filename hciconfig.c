@@ -636,8 +636,10 @@ static void cmd_features(int ctl, int hdev, char *opt)
 		features[4], features[5], features[6], features[7]);
 
 	tmp = lmp_featurestostr(di.features, "\t\t", 63);
-	printf("%s\n", tmp);
-	bt_free(tmp);
+	if (tmp != NULL) {
+		printf("%s\n", tmp);
+		bt_free(tmp);
+	}
 
 	for (i = 1; i <= max_page; i++) {
 		if (hci_read_local_ext_features(dd, i, NULL,
@@ -1111,9 +1113,10 @@ static void cmd_commands(int ctl, int hdev, char *opt)
 	}
 
 	str = hci_commandstostr(cmds, "\t", 71);
-	printf("%s\n", str);
-	bt_free(str);
-
+	if (str != NULL) {
+		printf("%s\n", str);
+		bt_free(str);
+	}
 	hci_close_dev(dd);
 }
 

@@ -274,9 +274,9 @@ static int open_patch_file(struct patch_ctx *ctx, char *fw_ver)
  */
 static int pre_patch(struct patch_ctx *ctx)
 {
-	int ret, i;
+	int ret, i = 0;
 	struct patch_entry entry;
-	char fw_ver[INTEL_VER_PARAM_LEN * 2];
+	char fw_ver[(INTEL_VER_PARAM_LEN * 2) + 1];
 
 	DBGPRINT("start pre_patch");
 
@@ -332,7 +332,8 @@ static int pre_patch(struct patch_ctx *ctx)
 		return -1;
 	}
 
-	for (i = 0; i < INTEL_VER_PARAM_LEN; i++)
+	memset(fw_ver, '\0', sizeof(fw_ver));
+	for (; i < INTEL_VER_PARAM_LEN; i++)
 		sprintf(&fw_ver[i*2], "%02x", entry.data[7+i]);
 
 	if (open_patch_file(ctx, fw_ver) < 0) {

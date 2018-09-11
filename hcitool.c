@@ -822,8 +822,10 @@ static void cmd_scan(int dev_id, int argc, char **argv)
 					features[2], features[3],
 					features[4], features[5],
 					features[6], features[7]);
-				printf("%s\n", tmp);
-				bt_free(tmp);
+				if (tmp != NULL) {
+					printf("%s\n", tmp);
+					bt_free(tmp);
+				}
 			}
 
 			if (cc) {
