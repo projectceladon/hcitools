@@ -1206,6 +1206,7 @@ static void print_link_key(const uint8_t *link_key)
 static void print_pin_code(const uint8_t *pin_code, uint8_t pin_len)
 {
 	char str[pin_len + 1];
+	memset( str, '\0', sizeof(str) );
 	uint8_t i;
 
 	for (i = 0; i < pin_len; i++)
