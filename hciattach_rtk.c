@@ -1481,7 +1481,7 @@ RT_U32 rtk_parse_config_file(RT_U8* config_buf, size_t filelen, unsigned char bt
   }
 
   if (config_len != filelen - sizeof(struct rtk_bt_vendor_config)) {
-    RS_ERR("config len(%x) is not right(%x)", config_len, filelen-sizeof(struct rtk_bt_vendor_config));
+    RS_ERR("config len(%x) is not right(%lx)", config_len, filelen-sizeof(struct rtk_bt_vendor_config));
     return 0;
   }
 
@@ -1650,7 +1650,7 @@ GET_CONFIG:
   }
 
   if ((*config_buf = malloc(filelen)) == NULL) {
-    printf("malloc buffer for config file fail(%x)\n", filelen);
+    printf("malloc buffer for config file fail(%lx)\n", filelen);
     close(fd);
     return -1;
   }

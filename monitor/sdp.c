@@ -422,7 +422,7 @@ struct cont_data {
 	uint32_t size;
 };
 
-static struct cont_data cont_list[MAX_CONT];
+static struct cont_data cont_list[MAX_CONT + 1 ];
 
 static void handle_continuation(struct tid_data *tid, bool nested,
 			uint16_t bytes, const uint8_t *data, uint16_t size)

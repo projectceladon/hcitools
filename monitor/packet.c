@@ -72,6 +72,7 @@
 #define COLOR_UNKNOWN_SERVICE_CLASS	COLOR_WHITE_BG
 
 #define COLOR_PHY_PACKET		COLOR_BLUE
+#define MIN(x, y)                       ((x) < (y) ? (x) : (y))
 
 static time_t time_offset = ((time_t) -1);
 static unsigned long filter_mask = 0;
@@ -160,16 +161,20 @@ static void print_packet(struct timeval *tv, uint16_t index, char ident,
 {
 	int col = num_columns();
 	char line[256], ts_str[64];
-	int n, ts_len = 0, ts_pos = 0, len = 0, pos = 0;
+	int n, ts_len = 0, ts_pos = 0, len = 0, pos = 0, ts_str_size = 0;
+	int line_size = 0;
 
+	ts_str_size = sizeof(ts_str);
+	line_size = sizeof(line);
 	if (filter_mask & PACKET_FILTER_SHOW_INDEX) {
 		if (use_color()) {
-			n = sprintf(ts_str + ts_pos, "%s", COLOR_INDEX_LABEL);
+			n = snprintf(ts_str + ts_pos, ts_str_size - ts_pos,
+						"%s", COLOR_INDEX_LABEL);
 			if (n > 0)
 				ts_pos += n;
 		}
 
-		n = sprintf(ts_str + ts_pos, " [hci%d]", index);
+		n = snprintf(ts_str + ts_pos, ts_str_size - ts_pos, "[hci%d]", index);
 		if (n > 0) {
 			ts_pos += n;
 			ts_len += n;
@@ -183,14 +188,15 @@ static void print_packet(struct timeval *tv, uint16_t index, char ident,
 		localtime_r(&t, &tm);
 
 		if (use_color()) {
-			n = sprintf(ts_str + ts_pos, "%s", COLOR_TIMESTAMP);
+			n = snprintf(ts_str + ts_pos, ts_str_size - ts_pos, "%s", COLOR_TIMESTAMP);
 			if (n > 0)
 				ts_pos += n;
 		}
 
 		if (filter_mask & PACKET_FILTER_SHOW_DATE) {
-			n = sprintf(ts_str + ts_pos, " %04d-%02d-%02d",
-				tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+			n = snprintf(ts_str + ts_pos,
+			      ts_str_size - ts_pos, " %04d-%02d-%02d", tm.tm_year + 1900,
+								 tm.tm_mon + 1, tm.tm_mday);
 			if (n > 0) {
 				ts_pos += n;
 				ts_len += n;
@@ -198,8 +204,8 @@ static void print_packet(struct timeval *tv, uint16_t index, char ident,
 		}
 
 		if (filter_mask & PACKET_FILTER_SHOW_TIME) {
-			n = sprintf(ts_str + ts_pos, " %02d:%02d:%02d.%06lu",
-				tm.tm_hour, tm.tm_min, tm.tm_sec, tv->tv_usec);
+			n = snprintf(ts_str + ts_pos, ts_str_size - ts_pos, " %02d:%02d:%02d.%06lu",
+						tm.tm_hour, tm.tm_min, tm.tm_sec, tv->tv_usec);
 			if (n > 0) {
 				ts_pos += n;
 				ts_len += n;
@@ -207,8 +213,8 @@ static void print_packet(struct timeval *tv, uint16_t index, char ident,
 		}
 
 		if (filter_mask & PACKET_FILTER_SHOW_TIME_OFFSET) {
-			n = sprintf(ts_str + ts_pos, " %lu.%06lu",
-					tv->tv_sec - time_offset, tv->tv_usec);
+			n = snprintf(ts_str + ts_pos, ts_str_size - ts_pos,
+					" %lu.%06lu", tv->tv_sec - time_offset, tv->tv_usec);
 			if (n > 0) {
 				ts_pos += n;
 				ts_len += n;
@@ -217,18 +223,18 @@ static void print_packet(struct timeval *tv, uint16_t index, char ident,
 	}
 
 	if (use_color()) {
-		n = sprintf(ts_str + ts_pos, "%s", COLOR_OFF);
+		n = snprintf(ts_str + ts_pos, ts_str_size - ts_pos, "%s", COLOR_OFF);
 		if (n > 0)
 			ts_pos += n;
 	}
 
 	if (use_color()) {
-		n = sprintf(line + pos, "%s", color);
+		n = snprintf(line + pos, line_size - pos, "%s", color);
 		if (n > 0)
 			pos += n;
 	}
 
-	n = sprintf(line + pos, "%c %s", ident, label);
+	n = snprintf(line + pos, line_size - pos, "%c %s", ident, label);
 	if (n > 0) {
 		pos += n;
 		len += n;
@@ -255,13 +261,13 @@ static void print_packet(struct timeval *tv, uint16_t index, char ident,
 	}
 
 	if (use_color()) {
-		n = sprintf(line + pos, "%s", COLOR_OFF);
+		n = snprintf(line + pos, line_size - pos, "%s", COLOR_OFF);
 		if (n > 0)
 			pos += n;
 	}
 
 	if (extra) {
-		n = sprintf(line + pos, " %s", extra);
+		n = snprintf(line + pos, line_size - pos, " %s", extra);
 		if (n > 0) {
 			pos += n;
 			len += n;
@@ -1184,11 +1190,13 @@ static void print_hex_field(const char *label, const uint8_t *data,
 {
 	char str[len * 2 + 1];
 	uint8_t i;
+	int str_size = sizeof(str);
 
 	str[0] = '\0';
 
 	for (i = 0; i < len; i++)
-		sprintf(str + (i * 2), "%2.2x", data[i]);
+		snprintf(str + (i * 2), str_size - (i * 2),
+							"%2.2x", data[i]);
 
 	print_field("%s: %s", label, str);
 }
@@ -1208,9 +1216,10 @@ static void print_pin_code(const uint8_t *pin_code, uint8_t pin_len)
 	char str[pin_len + 1];
 	memset( str, '\0', sizeof(str) );
 	uint8_t i;
+	int str_size = sizeof(str);
 
 	for (i = 0; i < pin_len; i++)
-		sprintf(str + i, "%c", (const char) pin_code[i]);
+		snprintf(str + i, str_size -  i,"%c", (const char) pin_code[i]);
 
 	print_field("PIN code: %s", str);
 }
@@ -1582,11 +1591,11 @@ static void print_name(const uint8_t *name)
 static void print_channel_map(const uint8_t *map)
 {
 	char str[21];
-	int i;
+	int i, str_size = sizeof(str);
 
 	for (i = 0; i < 10; i++)
-		sprintf(str + (i * 2), "%2.2x", map[i]);
-
+		snprintf(str + (i * 2), str_size - (i * 2),
+							"%2.2x", map[i]);
 	print_field("Channel map: 0x%s", str);
 }
 
@@ -1692,7 +1701,8 @@ static void print_commands(const uint8_t *commands)
 				continue;
 
 			cmd = get_supported_command((i * 8) + n);
-			print_field("  %s (Octet %d - Bit %d)", cmd, i, n);
+			print_field("  %s (Octet %d - Bit %d)",
+					cmd == NULL ? "cmd is NULL": cmd, i, n);
 		}
 	}
 }
@@ -1789,10 +1799,11 @@ static void print_features(uint8_t page, const uint8_t *features_array,
 	const struct features_data *features_table = NULL;
 	uint64_t mask, features = 0;
 	char str[41];
-	int i;
+	int i, str_size = sizeof(str);
 
 	for (i = 0; i < 8; i++) {
-		sprintf(str + (i * 5), " 0x%2.2x", features_array[i]);
+		snprintf(str + (i * 5), str_size - (i * 5),
+					" 0x%2.2x", features_array[i]);
 		features |= ((uint64_t) features_array[i]) << (i * 8);
 	}
 
@@ -1920,10 +1931,10 @@ static void print_le_states(const uint8_t *states_array)
 static void print_le_channel_map(const uint8_t *map)
 {
 	char str[11];
-	int i;
+	int i, str_size = sizeof(str);
 
 	for (i = 0; i < 5; i++)
-		sprintf(str + (i * 2), "%2.2x", map[i]);
+		snprintf(str + (i * 2), str_size - (i * 2), "%2.2x", map[i]);
 
 	print_field("Channel map: 0x%s", str);
 }
@@ -2384,13 +2395,13 @@ static void print_eir(const uint8_t *eir, uint8_t eir_len, bool le)
 
 		case BT_EIR_NAME_SHORT:
 			memset(name, 0, sizeof(name));
-			memcpy(name, data, data_len);
+			memcpy(name, data, MIN(data_len, sizeof(name) - 1));
 			print_field("Name (short): %s", name);
 			break;
 
 		case BT_EIR_NAME_COMPLETE:
 			memset(name, 0, sizeof(name));
-			memcpy(name, data, data_len);
+			memcpy(name, data, MIN(data_len, sizeof(name) - 1));
 			print_field("Name (complete): %s", name);
 			break;
 
@@ -2463,7 +2474,7 @@ static void print_eir(const uint8_t *eir, uint8_t eir_len, bool le)
 		case BT_EIR_SERVICE_DATA:
 			if (data_len < 2)
 				break;
-			sprintf(label, "Service Data (UUID 0x%4.4x)",
+			snprintf(label, sizeof(label), "Service Data (UUID 0x%4.4x)",
 							bt_get_le16(&data[0]));
 			print_hex_field(label, &data[2], data_len - 2);
 			break;
@@ -2530,7 +2541,7 @@ static void print_eir(const uint8_t *eir, uint8_t eir_len, bool le)
 			break;
 
 		default:
-			sprintf(label, "Unknown EIR field 0x%2.2x", eir[1]);
+			snprintf(label, sizeof(label), "Unknown EIR field 0x%2.2x", eir[1]);
 			print_hex_field(label, data, data_len);
 			break;
 		}
@@ -2673,7 +2684,7 @@ void packet_monitor(struct timeval *tv, uint16_t index, uint16_t opcode,
 		packet_hci_scodata(tv, index, true, data, size);
 		break;
 	default:
-		sprintf(extra_str, "(code %d len %d)", opcode, size);
+		snprintf(extra_str, sizeof(extra_str), "(code %d len %d)", opcode, size);
 		print_packet(tv, index, '*', COLOR_ERROR,
 					"Unknown packet", NULL, extra_str);
 		packet_hexdump(data, size);
@@ -2689,7 +2700,7 @@ void packet_simulator(struct timeval *tv, uint16_t frequency,
 	if (tv && time_offset == ((time_t) -1))
 		time_offset = tv->tv_sec;
 
-	sprintf(str, "%u MHz", frequency);
+	snprintf(str, sizeof(str), "%u MHz", frequency);
 
 	print_packet(tv, 0, '*', COLOR_PHY_PACKET,
 					"Physical packet:", NULL, str);
@@ -6245,7 +6256,7 @@ void packet_new_index(struct timeval *tv, uint16_t index, const char *label,
 {
 	char details[48];
 
-	sprintf(details, "(%s,%s,%s)", hci_typetostr(type),
+	snprintf(details, sizeof(details), "(%s,%s,%s)", hci_typetostr(type),
 					hci_bustostr(bus), name);
 
 	print_packet(tv, index, '=', COLOR_NEW_INDEX, "New Index",
@@ -6271,7 +6282,7 @@ void packet_hci_command(struct timeval *tv, uint16_t index,
 	int i;
 
 	if (size < HCI_COMMAND_HDR_SIZE) {
-		sprintf(extra_str, "(len %d)", size);
+		snprintf(extra_str, sizeof(extra_str), "(len %d)", size);
 		print_packet(tv, index, '*', COLOR_ERROR,
 			"Malformed HCI Command packet", NULL, extra_str);
 		packet_hexdump(data, size);
@@ -6299,7 +6310,8 @@ void packet_hci_command(struct timeval *tv, uint16_t index,
 		opcode_str = "Unknown";
 	}
 
-	sprintf(extra_str, "(0x%2.2x|0x%4.4x) plen %d", ogf, ocf, hdr->plen);
+	snprintf(extra_str, sizeof(extra_str),
+			"(0x%2.2x|0x%4.4x) plen %d", ogf, ocf, hdr->plen);
 
 	print_packet(tv, index, '<', opcode_color, "HCI Command",
 							opcode_str, extra_str);
@@ -6336,7 +6348,7 @@ void packet_hci_event(struct timeval *tv, uint16_t index,
 	int i;
 
 	if (size < HCI_EVENT_HDR_SIZE) {
-		sprintf(extra_str, "(len %d)", size);
+		snprintf(extra_str, sizeof(extra_str), "(len %d)", size);
 		print_packet(tv, index, '*', COLOR_ERROR,
 			"Malformed HCI Event packet", NULL, extra_str);
 		packet_hexdump(data, size);
@@ -6364,7 +6376,8 @@ void packet_hci_event(struct timeval *tv, uint16_t index,
 		event_str = "Unknown";
 	}
 
-	sprintf(extra_str, "(0x%2.2x) plen %d", hdr->evt, hdr->plen);
+	snprintf(extra_str, sizeof(extra_str), "(0x%2.2x) plen %d",
+						hdr->evt, hdr->plen);
 
 	print_packet(tv, index, '>', event_color, "HCI Event",
                                                         event_str, extra_str);
@@ -6414,8 +6427,8 @@ void packet_hci_acldata(struct timeval *tv, uint16_t index, bool in,
 	data += sizeof(*hdr);
 	size -= sizeof(*hdr);
 
-	sprintf(handle_str, "Handle %d", acl_handle(handle));
-	sprintf(extra_str, "flags 0x%2.2x dlen %d", flags, dlen);
+	snprintf(handle_str, sizeof(handle_str), "Handle %d", acl_handle(handle));
+	snprintf(extra_str, sizeof(extra_str), "flags 0x%2.2x dlen %d", flags, dlen);
 
 	print_packet(tv, index, in ? '>' : '<', COLOR_HCI_ACLDATA,
 				in ? "ACL Data RX" : "ACL Data TX",
@@ -6456,8 +6469,10 @@ void packet_hci_scodata(struct timeval *tv, uint16_t index, bool in,
 	data += HCI_SCO_HDR_SIZE;
 	size -= HCI_SCO_HDR_SIZE;
 
-	sprintf(handle_str, "Handle %d", acl_handle(handle));
-	sprintf(extra_str, "flags 0x%2.2x dlen %d", flags, hdr->dlen);
+	snprintf(handle_str, sizeof(handle_str), "Handle %d",
+							acl_handle(handle));
+	snprintf(extra_str, sizeof(extra_str), "flags 0x%2.2x dlen %d",
+							flags, hdr->dlen);
 
 	print_packet(tv, index, in ? '>' : '<', COLOR_HCI_SCODATA,
 				in ? "SCO Data RX" : "SCO Data TX",
