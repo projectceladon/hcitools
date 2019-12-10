@@ -82,26 +82,30 @@ static void print_dev_list(int ctl, int flags)
 		}
 		print_dev_info(ctl, &di);
 	}
+	free(dl);
 }
 
 static void print_pkt_type(struct hci_dev_info *di)
 {
 	char *str;
 	str = hci_ptypetostr(di->pkt_type);
-	printf("\tPacket type: %s\n", str);
+	if (str != NULL)
+		printf("\tPacket type: %s\n", str);
 	bt_free(str);
 }
 
 static void print_link_policy(struct hci_dev_info *di)
 {
-	printf("\tLink policy: %s\n", hci_lptostr(di->link_policy));
+	if (di != NULL)
+		printf("\tLink policy: %s\n", hci_lptostr(di->link_policy));
 }
 
 static void print_link_mode(struct hci_dev_info *di)
 {
 	char *str;
 	str =  hci_lmtostr(di->link_mode);
-	printf("\tLink mode: %s\n", str);
+	if (str != NULL)
+		printf("\tLink mode: %s\n", str);
 	bt_free(str);
 }
 
@@ -115,7 +119,8 @@ static void print_dev_features(struct hci_dev_info *di, int format)
 
 	if (format) {
 		char *tmp = lmp_featurestostr(di->features, "\t\t", 63);
-		printf("%s\n", tmp);
+		if (tmp != NULL)
+			printf("%s\n", tmp);
 		bt_free(tmp);
 	}
 }
@@ -955,6 +960,7 @@ static void cmd_class(int ctl, int hdev, char *opt)
 			printf("%s, %s\n", major_devices[cls[1] & 0x1f],
 				get_minor_device_name(cls[1] & 0x1f, cls[0] >> 2));
 	}
+	hci_close_dev(s);
 }
 
 static void cmd_voice(int ctl, int hdev, char *opt)
@@ -1015,6 +1021,7 @@ static void cmd_voice(int ctl, int hdev, char *opt)
 		}
 		printf("\tAir Coding Format: %s\n", acf[vs & 0x03]);
 	}
+	hci_close_dev(s);
 }
 
 static void cmd_delkey(int ctl, int hdev, char *opt)
@@ -1455,6 +1462,7 @@ static void cmd_inq_parms(int ctl, int hdev, char *opt)
 		printf("\tInquiry interval: %u slots (%.2f ms), window: %u slots (%.2f ms)\n",
 				interval, (float)interval * 0.625, window, (float)window * 0.625);
 	}
+	hci_close_dev(s);
 }
 
 static void cmd_page_parms(int ctl, int hdev, char *opt)
@@ -1526,6 +1534,7 @@ static void cmd_page_parms(int ctl, int hdev, char *opt)
 			interval, (float)interval * 0.625,
 			window, (float)window * 0.625);
 	}
+	hci_close_dev(s);
 }
 
 static void cmd_page_to(int ctl, int hdev, char *opt)
@@ -1590,6 +1599,7 @@ static void cmd_page_to(int ctl, int hdev, char *opt)
 		printf("\tPage timeout: %u slots (%.2f ms)\n",
 				timeout, (float)timeout * 0.625);
 	}
+	hci_close_dev(s);
 }
 
 static void cmd_afh_mode(int ctl, int hdev, char *opt)
@@ -1623,6 +1633,7 @@ static void cmd_afh_mode(int ctl, int hdev, char *opt)
 		print_dev_hdr(&di);
 		printf("\tAFH mode: %s\n", mode == 1 ? "Enabled" : "Disabled");
 	}
+	hci_close_dev(dd);
 }
 
 static void cmd_ssp_mode(int ctl, int hdev, char *opt)
@@ -1657,6 +1668,7 @@ static void cmd_ssp_mode(int ctl, int hdev, char *opt)
 		printf("\tSimple Pairing mode: %s\n",
 			mode == 1 ? "Enabled" : "Disabled");
 	}
+	hci_close_dev(dd);
 }
 
 static void print_rev_ericsson(int dd)
@@ -1783,6 +1795,7 @@ static void cmd_revision(int ctl, int hdev, char *opt)
 		printf("\tUnsupported manufacturer\n");
 		break;
 	}
+	hci_close_dev(dd);
 	return;
 }
 
@@ -1866,7 +1879,8 @@ static void print_dev_info(int ctl, struct hci_dev_info *di)
 	print_dev_hdr(di);
 
 	str = hci_dflagstostr(di->flags);
-	printf("\t%s\n", str);
+	if (str != NULL)
+		printf("\t%s\n", str);
 	bt_free(str);
 
 	printf("\tRX bytes:%d acl:%d sco:%d events:%d errors:%d\n",

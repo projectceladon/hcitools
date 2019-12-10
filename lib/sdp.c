@@ -1402,8 +1402,10 @@ sdp_record_t *sdp_extract_pdu(const uint8_t *buf, int bufsize, int *scanned)
 	*scanned = sdp_extract_seqtype(buf, bufsize, &dtd, &seqlen);
 	p += *scanned;
 	bufsize -= *scanned;
-	rec->attrlist = NULL;
-
+	if (rec != NULL)
+		rec->attrlist = NULL;
+	else
+		return rec;
 	while (extracted < seqlen && bufsize > 0) {
 		int n = sizeof(uint8_t), attrlen = 0;
 		sdp_data_t *data = NULL;
@@ -1577,8 +1579,10 @@ sdp_record_t *sdp_copy_record(sdp_record_t *rec)
 
 	cpy = sdp_record_alloc();
 
-	cpy->handle = rec->handle;
-
+	if (cpy != NULL)
+		cpy->handle = rec->handle;
+	else
+		return cpy;
 	sdp_list_foreach(rec->pattern, sdp_copy_pattern, cpy);
 	sdp_list_foreach(rec->attrlist, sdp_copy_attrlist, cpy);
 
@@ -1997,8 +2001,11 @@ int sdp_set_uuidseq_attr(sdp_record_t *rec, uint16_t aid, sdp_list_t *seq)
 	}
 	if (status == 0) {
 		sdp_data_t *data = sdp_seq_alloc(dtds, values, len);
-		sdp_attr_replace(rec, aid, data);
-		sdp_pattern_add_uuidseq(rec, seq);
+		if (data != NULL) {
+			sdp_attr_replace(rec, aid, data);
+			sdp_pattern_add_uuidseq(rec, seq);
+		} else
+			status = -1;
 	}
 	free(dtds);
 	free(values);
@@ -2386,7 +2393,8 @@ int sdp_set_access_protos(sdp_record_t *rec, const sdp_list_t *ap)
 
 	for (p = ap; p; p = p->next) {
 		sdp_data_t *seq = access_proto_to_dataseq(rec, p->data);
-		protos = sdp_seq_append(protos, seq);
+		if (seq != NULL)
+			protos = sdp_seq_append(protos, seq);
 	}
 
 	sdp_attr_add(rec, SDP_ATTR_PROTO_DESC_LIST, protos);
@@ -2401,7 +2409,8 @@ int sdp_set_add_access_protos(sdp_record_t *rec, const sdp_list_t *ap)
 
 	for (p = ap; p; p = p->next) {
 		sdp_data_t *seq = access_proto_to_dataseq(rec, p->data);
-		protos = sdp_seq_append(protos, seq);
+		if (seq != NULL)
+			protos = sdp_seq_append(protos, seq);
 	}
 
 	sdp_attr_add(rec, SDP_ATTR_ADD_PROTO_DESC_LIST,
@@ -2973,7 +2982,12 @@ int sdp_device_record_register(sdp_session_t *session, bdaddr_t *device, sdp_rec
 	if (rec->handle && rec->handle != 0xffffffff) {
 		uint32_t handle = rec->handle;
 		sdp_data_t *data = sdp_data_alloc(SDP_UINT32, &handle);
-		sdp_attr_replace(rec, SDP_ATTR_RECORD_HANDLE, data);
+		if (data != NULL)
+			sdp_attr_replace(rec, SDP_ATTR_RECORD_HANDLE, data);
+		else {
+			errno = ENOMEM;
+			return -1;
+		}
 	}
 
 	if (sdp_gen_record_pdu(rec, &pdu) < 0) {
@@ -2988,8 +3002,13 @@ int sdp_device_record_register(sdp_session_t *session, bdaddr_t *device, sdp_rec
 
 	if (err == 0) {
 		sdp_data_t *data = sdp_data_alloc(SDP_UINT32, &handle);
-		rec->handle = handle;
-		sdp_attr_replace(rec, SDP_ATTR_RECORD_HANDLE, data);
+		if (data != NULL) {
+			rec->handle = handle;
+			sdp_attr_replace(rec, SDP_ATTR_RECORD_HANDLE, data);
+		} else {
+			errno = ENOMEM;
+			return -1;
+		}
 	}
 
 	return err;
@@ -3674,6 +3693,8 @@ sdp_record_t *sdp_service_attr_req(sdp_session_t *session, uint32_t handle,
 
 			/* build concatenated response buffer */
 			rsp_concat_buf.data = realloc(rsp_concat_buf.data, rsp_concat_buf.data_size + rsp_count);
+			if (rsp_concat_buf.data == NULL)
+				goto end;
 			rsp_concat_buf.buf_size = rsp_concat_buf.data_size + rsp_count;
 			targetPtr = rsp_concat_buf.data + rsp_concat_buf.data_size;
 			memcpy(targetPtr, pdata, rsp_count);
@@ -4525,6 +4546,8 @@ int sdp_service_search_attr_req(sdp_session_t *session, const sdp_list_t *search
 
 			/* build concatenated response buffer */
 			rsp_concat_buf.data = realloc(rsp_concat_buf.data, rsp_concat_buf.data_size + rsp_count);
+			if ( rsp_concat_buf.data == NULL)
+				goto end;
 			targetPtr = rsp_concat_buf.data + rsp_concat_buf.data_size;
 			rsp_concat_buf.buf_size = rsp_concat_buf.data_size + rsp_count;
 			memcpy(targetPtr, pdata, rsp_count);
