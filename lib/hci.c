@@ -303,7 +303,7 @@ static hci_map link_mode_map[] = {
 
 char *hci_lmtostr(unsigned int lm)
 {
-	char *s, *str = bt_malloc(50);
+	char *s, *str = bt_malloc(130);
 	if (!str)
 		return NULL;
 

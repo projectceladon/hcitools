@@ -2758,6 +2758,8 @@ static int parse_line(char *str)
 		value = strtol(off, &end, 16);
 		if (value == 0 && off == end)
 			break;
+		if (length > 254)
+			return -EIO;
 
 		array[length++] = value & 0xff;
 		array[length++] = value >> 8;
