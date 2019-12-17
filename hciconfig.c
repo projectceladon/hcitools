@@ -88,7 +88,10 @@ static void print_dev_list(int ctl, int flags)
 static void print_pkt_type(struct hci_dev_info *di)
 {
 	char *str;
-	str = hci_ptypetostr(di->pkt_type);
+	if (di != NULL)
+		str = hci_ptypetostr(di->pkt_type);
+	else
+		return;
 	if (str != NULL)
 		printf("\tPacket type: %s\n", str);
 	bt_free(str);
@@ -96,14 +99,23 @@ static void print_pkt_type(struct hci_dev_info *di)
 
 static void print_link_policy(struct hci_dev_info *di)
 {
+	char *str;
 	if (di != NULL)
-		printf("\tLink policy: %s\n", hci_lptostr(di->link_policy));
+		str = hci_ptypetostr(di->pkt_type);
+	else
+		return;
+	if (str != NULL)
+		printf("\tLink policy: %s\n", str);
+	bt_free(str);
 }
 
 static void print_link_mode(struct hci_dev_info *di)
 {
 	char *str;
-	str =  hci_lmtostr(di->link_mode);
+	if (di != NULL)
+		str =  hci_lmtostr(di->link_mode);
+	else
+		return;
 	if (str != NULL)
 		printf("\tLink mode: %s\n", str);
 	bt_free(str);
@@ -111,6 +123,8 @@ static void print_link_mode(struct hci_dev_info *di)
 
 static void print_dev_features(struct hci_dev_info *di, int format)
 {
+	if (!di)
+		return;
 	printf("\tFeatures: 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x "
 				"0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x\n",
 		di->features[0], di->features[1], di->features[2],
@@ -852,6 +866,7 @@ static char *get_minor_device_name(int major, int minor)
 			strncat(cls_str, "(reserved)", sizeof(cls_str) - strlen(cls_str));
 			break;
 		}
+		cls_str[47] = '\0';
 		if (strlen(cls_str) > 0)
 			return cls_str;
 	}
@@ -1769,6 +1784,7 @@ static void cmd_revision(int ctl, int hdev, char *opt)
 	if (hci_read_local_version(dd, &ver, 1000) < 0) {
 		fprintf(stderr, "Can't read version info for hci%d: %s (%d)\n",
 						hdev, strerror(errno), errno);
+		hci_close_dev(dd);
 		return;
 	}
 

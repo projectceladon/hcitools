@@ -303,21 +303,24 @@ static hci_map link_mode_map[] = {
 
 char *hci_lmtostr(unsigned int lm)
 {
-	char *s, *str = bt_malloc(130);
-	if (!str)
+	char *s, *str;
+	char ptr[] = "SLAVE ";
+	s = hci_bit2str(link_mode_map, lm);
+	if (!s)
 		return NULL;
 
-	*str = 0;
-	if (!(lm & HCI_LM_MASTER))
-		strcpy(str, "SLAVE ");
-
-	s = hci_bit2str(link_mode_map, lm);
-	if (!s) {
-		bt_free(str);
+	str = malloc(strlen(ptr) + strlen(s) + 1);
+	if (!str) {
+		free(s);
 		return NULL;
 	}
 
-	strcat(str, s);
+	*str = 0;
+	if (!(lm & HCI_LM_MASTER))
+		strcpy(str, ptr);
+
+	strncat(str, s, strlen(s));
+	str[strlen(ptr) + strlen(s)] = '\0';
 	free(s);
 	return str;
 }

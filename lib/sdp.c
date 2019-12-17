@@ -586,6 +586,8 @@ int sdp_attr_add(sdp_record_t *rec, uint16_t attr, sdp_data_t *d)
 
 	if (p)
 		return -1;
+	if (d)
+		return -1;
 
 	d->attrId = attr;
 	rec->attrlist = sdp_list_insert_sorted(rec->attrlist, d, sdp_attrid_comp_func);
@@ -2395,9 +2397,13 @@ int sdp_set_access_protos(sdp_record_t *rec, const sdp_list_t *ap)
 		sdp_data_t *seq = access_proto_to_dataseq(rec, p->data);
 		if (seq != NULL)
 			protos = sdp_seq_append(protos, seq);
+		else
+			return -1;
 	}
-
-	sdp_attr_add(rec, SDP_ATTR_PROTO_DESC_LIST, protos);
+	if (!protos)
+		return -1;
+	else
+		sdp_attr_add(rec, SDP_ATTR_PROTO_DESC_LIST, protos);
 
 	return 0;
 }
@@ -2411,6 +2417,8 @@ int sdp_set_add_access_protos(sdp_record_t *rec, const sdp_list_t *ap)
 		sdp_data_t *seq = access_proto_to_dataseq(rec, p->data);
 		if (seq != NULL)
 			protos = sdp_seq_append(protos, seq);
+		else
+			return -1;
 	}
 
 	sdp_attr_add(rec, SDP_ATTR_ADD_PROTO_DESC_LIST,
