@@ -586,7 +586,7 @@ int sdp_attr_add(sdp_record_t *rec, uint16_t attr, sdp_data_t *d)
 
 	if (p)
 		return -1;
-	if (d)
+	if (d == NULL)
 		return -1;
 
 	d->attrId = attr;
