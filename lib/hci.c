@@ -64,8 +64,14 @@ static char *hci_bit2str(hci_map *m, unsigned int val)
 
 	*ptr = 0;
 	while (m->str) {
-		if ((unsigned int) m->val & val)
-			ptr += sprintf(ptr, "%s ", m->str);
+		if ((unsigned int) m->val & val) {
+			if ((ptr + strlen(m->str) + 1 ) < (str + 120)) {
+				ptr += sprintf(ptr, "%s ", m->str);
+			} else {
+				free(str);
+				return NULL;
+			}
+		}
 		m++;
 	}
 	return str;
