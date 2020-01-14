@@ -6,7 +6,9 @@ LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SRC_FILES := hcitool.c
 LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c lib/sdp.c
 LOCAL_CFLAGS += -Wno-unused-parameter -Wno-pointer-arith \
-                -Wno-missing-field-initializers
+                -Wno-missing-field-initializers \
+                -fno-strict-overflow -fno-delete-null-pointer-checks \
+                -fwrapv
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
@@ -17,7 +19,9 @@ LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SRC_FILES := hciconfig.c csr.c
 LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c lib/sdp.c
 LOCAL_CFLAGS += -Wno-unused-parameter -Wno-pointer-arith \
-                -Wno-missing-field-initializers
+                -Wno-missing-field-initializers \
+                -fno-strict-overflow -fno-delete-null-pointer-checks \
+                -fwrapv
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
@@ -36,7 +40,9 @@ LOCAL_SRC_FILES := monitor/main.c monitor/mainloop.c \
 LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c lib/sdp.c
 LOCAL_CFLAGS += -DVERSION=\"5.10\" \
                 -Wno-unused-parameter -Wno-pointer-arith \
-                -Wno-missing-field-initializers
+                -Wno-missing-field-initializers \
+                -fno-strict-overflow -fno-delete-null-pointer-checks \
+                -fwrapv
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
@@ -54,6 +60,8 @@ LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c lib/sdp.c
 LOCAL_CFLAGS += -DFIRMWARE_DIR=\"/vendor/firmware\" \
                 -Wno-unused-parameter -Wno-pointer-arith \
                 -Wno-missing-field-initializers \
+                -fno-strict-overflow -fno-delete-null-pointer-checks \
+                -fwrapv \
                 -Wno-for-loop-analysis -Wno-format
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
