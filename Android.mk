@@ -9,6 +9,14 @@ LOCAL_CFLAGS += -Wno-unused-parameter -Wno-pointer-arith \
                 -Wno-missing-field-initializers \
                 -fno-strict-overflow -fno-delete-null-pointer-checks \
                 -fwrapv
+LOCAL_CFLAGS += \
+                -D_FORTIFY_SOURCE=2 \
+                -fstack-protector-strong \
+                -Wno-conversion-null \
+                -Wnull-dereference \
+                -Werror \
+                -Warray-bounds
+
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
@@ -22,6 +30,14 @@ LOCAL_CFLAGS += -Wno-unused-parameter -Wno-pointer-arith \
                 -Wno-missing-field-initializers \
                 -fno-strict-overflow -fno-delete-null-pointer-checks \
                 -fwrapv
+LOCAL_CFLAGS += \
+                -D_FORTIFY_SOURCE=2 \
+                -fstack-protector-strong \
+                -Wno-conversion-null \
+                -Wnull-dereference \
+                -Werror \
+                -Warray-bounds
+
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
@@ -43,6 +59,14 @@ LOCAL_CFLAGS += -DVERSION=\"5.10\" \
                 -Wno-missing-field-initializers \
                 -fno-strict-overflow -fno-delete-null-pointer-checks \
                 -fwrapv
+LOCAL_CFLAGS += \
+                -D_FORTIFY_SOURCE=2 \
+                -fstack-protector-strong \
+                -Wno-conversion-null \
+                -Wnull-dereference \
+                -Werror \
+                -Warray-bounds
+
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
@@ -63,6 +87,14 @@ LOCAL_CFLAGS += -DFIRMWARE_DIR=\"/vendor/firmware\" \
                 -fno-strict-overflow -fno-delete-null-pointer-checks \
                 -fwrapv \
                 -Wno-for-loop-analysis -Wno-format
+LOCAL_CFLAGS += \
+                -D_FORTIFY_SOURCE=2 \
+                -fstack-protector-strong \
+                -Wno-conversion-null \
+                -Wnull-dereference \
+                -Werror \
+                -Warray-bounds
+
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
