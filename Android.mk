@@ -8,14 +8,15 @@ LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c lib/sdp.c
 LOCAL_CFLAGS += -Wno-unused-parameter -Wno-pointer-arith \
                 -Wno-missing-field-initializers \
                 -fno-strict-overflow -fno-delete-null-pointer-checks \
-                -fwrapv
-LOCAL_CFLAGS += \
+                -fwrapv \
                 -D_FORTIFY_SOURCE=2 \
                 -fstack-protector-strong \
                 -Wno-conversion-null \
                 -Wnull-dereference \
                 -Werror \
-                -Warray-bounds
+                -Warray-bounds \
+                -Wformat -Wformat-security \
+                -Werror=format-security
 
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
@@ -29,14 +30,15 @@ LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c lib/sdp.c
 LOCAL_CFLAGS += -Wno-unused-parameter -Wno-pointer-arith \
                 -Wno-missing-field-initializers \
                 -fno-strict-overflow -fno-delete-null-pointer-checks \
-                -fwrapv
-LOCAL_CFLAGS += \
+                -fwrapv \
                 -D_FORTIFY_SOURCE=2 \
                 -fstack-protector-strong \
                 -Wno-conversion-null \
                 -Wnull-dereference \
                 -Werror \
-                -Warray-bounds
+                -Warray-bounds \
+                -Wformat -Wformat-security \
+                -Werror=format-security
 
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
@@ -58,14 +60,15 @@ LOCAL_CFLAGS += -DVERSION=\"5.10\" \
                 -Wno-unused-parameter -Wno-pointer-arith \
                 -Wno-missing-field-initializers \
                 -fno-strict-overflow -fno-delete-null-pointer-checks \
-                -fwrapv
-LOCAL_CFLAGS += \
+                -fwrapv \
                 -D_FORTIFY_SOURCE=2 \
                 -fstack-protector-strong \
                 -Wno-conversion-null \
                 -Wnull-dereference \
                 -Werror \
-                -Warray-bounds
+                -Warray-bounds \
+                -Wformat -Wformat-security \
+                -Werror=format-security
 
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
@@ -86,14 +89,15 @@ LOCAL_CFLAGS += -DFIRMWARE_DIR=\"/vendor/firmware\" \
                 -Wno-missing-field-initializers \
                 -fno-strict-overflow -fno-delete-null-pointer-checks \
                 -fwrapv \
-                -Wno-for-loop-analysis -Wno-format
-LOCAL_CFLAGS += \
+                -Wno-for-loop-analysis \
                 -D_FORTIFY_SOURCE=2 \
                 -fstack-protector-strong \
                 -Wno-conversion-null \
                 -Wnull-dereference \
                 -Werror \
-                -Warray-bounds
+                -Warray-bounds \
+                -Wformat -Wformat-security \
+                -Werror=format-security
 
 LOCAL_C_INCLUDES := $(KERNEL_HEADERS) $(LOCAL_PATH)/lib
 LOCAL_MODULE_TAGS := optional
