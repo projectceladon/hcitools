@@ -1000,7 +1000,7 @@ int sdp_uuid_extract(const uint8_t *p, int bufsize, uuid_t *uuid, int *scanned)
 		SDPERR("Unknown data type : %d expecting a svc UUID", type);
 		return -1;
 	}
-	p += sizeof(uint8_t);
+	p++;
 	*scanned += sizeof(uint8_t);
 	bufsize -= sizeof(uint8_t);
 	if (type == SDP_UUID16) {
@@ -1224,7 +1224,7 @@ int sdp_extract_seqtype(const uint8_t *buf, int bufsize, uint8_t *dtdp, int *siz
 	}
 
 	dtd = *(uint8_t *) buf;
-	buf += sizeof(uint8_t);
+	buf++;
 	bufsize -= sizeof(uint8_t);
 	*dtdp = dtd;
 	switch (dtd) {
@@ -2863,7 +2863,7 @@ void sdp_append_to_buf(sdp_buf_t *dst, uint8_t *data, uint32_t len)
 		dst->data_size += 1;
 	}
 	dtd = *(uint8_t *) p;
-	p += sizeof(uint8_t);
+	p++;
 	switch (dtd) {
 	case SDP_SEQ8:
 		*(uint8_t *) p = dst->data_size - sizeof(uint8_t) - sizeof(uint8_t);
