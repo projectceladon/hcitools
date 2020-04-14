@@ -48,6 +48,7 @@
 #include "lib/bluetooth.h"
 #include "lib/hci.h"
 #include "lib/hci_lib.h"
+#include <safe_lib.h>
 #else //for Linux
 #include <stdint.h>
 #include <string.h>
@@ -461,8 +462,8 @@ static RT_U8 * skb_pull(struct sk_buff * skb, RT_U32 len)
     RS_ERR("Unable to allocate file buffer");
     exit(1);
   }
-  memcpy(buf, skb->data+len, skb->data_len);
-  memcpy(skb->data, buf, skb->data_len);
+  memcpy_s(buf, skb->data_len, skb->data+len, skb->data_len);
+  memcpy_s(skb->data, skb->max_len - skb->data_len, buf, skb->data_len);
   free(buf);
   return (skb->data);
 }
@@ -506,7 +507,8 @@ static RT_U16 h5_get_crc(struct rtk_h5_struct *h5)
 static void h5_slip_msgdelim(struct sk_buff *skb)
 {
   const char pkt_delim = 0xc0;
-  memcpy(skb_put(skb, 1), &pkt_delim, 1);
+  size_t len = skb->max_len - skb->data_len;
+  memcpy_s(skb_put(skb, 1), len,  &pkt_delim, 1);
 }
 
 /**
@@ -526,22 +528,23 @@ static void h5_slip_one_byte(struct sk_buff *skb, RT_U8 c)
   const RT_S8 esc_db[2] = { 0xdb, 0xdd };
   const RT_S8 esc_11[2] = { 0xdb, 0xde };
   const RT_S8 esc_13[2] = { 0xdb, 0xdf };
+  size_t len = skb->max_len - skb->data_len;
 
   switch (c) {
     case 0xc0:
-        memcpy(skb_put(skb, 2), &esc_c0, 2);
+        memcpy_s(skb_put(skb, 2), len, &esc_c0, 2);
         break;
     case 0xdb:
-        memcpy(skb_put(skb, 2), &esc_db, 2);
+        memcpy_s(skb_put(skb, 2), len, &esc_db, 2);
         break;
     case 0x11:
-        memcpy(skb_put(skb, 2), &esc_11, 2);
+        memcpy_s(skb_put(skb, 2), len, &esc_11, 2);
         break;
     case 0x13:
-        memcpy(skb_put(skb, 2), &esc_13, 2);
+        memcpy_s(skb_put(skb, 2), len, &esc_13, 2);
         break;
     default:
-        memcpy(skb_put(skb, 1), &c, 1);
+        memcpy_s(skb_put(skb, 1), len, &c, 1);
   }
 }
 
@@ -561,12 +564,14 @@ static void h5_unslip_one_byte(struct rtk_h5_struct *h5, unsigned char byte)
   const RT_U8 c0 = 0xc0, db = 0xdb;
   const RT_U8 oof1 = 0x11, oof2 = 0x13;
   //RS_DBG("HCI 3wire h5_unslip_one_byte");
+  size_t len = 0;
 
   if (H5_ESCSTATE_NOESC == h5->rx_esc_state) {
     if (0xdb == byte) {
       h5->rx_esc_state = H5_ESCSTATE_ESC;
     } else {
-      memcpy(skb_put(h5->rx_skb, 1), &byte, 1);
+      len =  h5->rx_skb->max_len - h5->rx_skb->data_len;
+      memcpy_s(skb_put(h5->rx_skb, 1), len, &byte, 1);
       //Check Pkt Header's CRC enable bit
       if ((h5->rx_skb->data[0] & 0x40) != 0 && h5->rx_state != H5_W4_CRC) {
         h5_crc_update(&h5->message_crc, byte);
@@ -574,30 +579,32 @@ static void h5_unslip_one_byte(struct rtk_h5_struct *h5, unsigned char byte)
       h5->rx_count--;
     }
   } else if(H5_ESCSTATE_ESC == h5->rx_esc_state) {
+
+    len =  h5->rx_skb->max_len - h5->rx_skb->data_len;
     switch (byte) {
       case 0xdc:
-          memcpy(skb_put(h5->rx_skb, 1), &c0, 1);
+          memcpy_s(skb_put(h5->rx_skb, 1), len, &c0, 1);
           if ((h5->rx_skb-> data[0] & 0x40) != 0 && h5->rx_state != H5_W4_CRC)
             h5_crc_update(&h5-> message_crc, 0xc0);
           h5->rx_esc_state = H5_ESCSTATE_NOESC;
           h5->rx_count--;
           break;
       case 0xdd:
-          memcpy(skb_put(h5->rx_skb, 1), &db, 1);
+          memcpy_s(skb_put(h5->rx_skb, 1), len, &db, 1);
           if ((h5->rx_skb-> data[0] & 0x40) != 0 && h5->rx_state != H5_W4_CRC)
             h5_crc_update(&h5-> message_crc, 0xdb);
           h5->rx_esc_state = H5_ESCSTATE_NOESC;
           h5->rx_count--;
           break;
       case 0xde:
-          memcpy(skb_put(h5->rx_skb, 1), &oof1, 1);
+          memcpy_s(skb_put(h5->rx_skb, 1), len, &oof1, 1);
           if ((h5->rx_skb-> data[0] & 0x40) != 0 && h5->rx_state != H5_W4_CRC)
             h5_crc_update(&h5-> message_crc, oof1);
           h5->rx_esc_state = H5_ESCSTATE_NOESC;
           h5->rx_count--;
           break;
       case 0xdf:
-          memcpy(skb_put(h5->rx_skb, 1), &oof2, 1);
+          memcpy_s(skb_put(h5->rx_skb, 1), len, &oof2, 1);
           if ((h5->rx_skb-> data[0] & 0x40) != 0 && h5->rx_state != H5_W4_CRC)
             h5_crc_update(&h5-> message_crc, oof2);
           h5->rx_esc_state = H5_ESCSTATE_NOESC;
@@ -1275,7 +1282,7 @@ static int hci_download_patch(int dd, int index, uint8_t *data, int len,struct t
   memset(&cp, 0, sizeof(cp));
   cp.index = index;
   if (data != NULL) {
-    memcpy(cp.data, data, len);
+    memcpy_s(cp.data, sizeof(cp.data), data, len);
   }
 
   int nValue = rtk_patch.nTotal|0x80;
@@ -1285,7 +1292,7 @@ static int hci_download_patch(int dd, int index, uint8_t *data, int len,struct t
     rtk_patch.nTxIndex = index;
   }
   hcipatch[2] = len+1;
-  memcpy(hcipatch+3, &cp, len+1);
+  memcpy_s(hcipatch+3, sizeof(hcipatch) - 3, &cp, len+1);
 
   //printf("h5_prepare_pkt rtk_h5.rxseq_txack:%d\n", rtk_h5.rxseq_txack);
   struct sk_buff *nskb = h5_prepare_pkt(&rtk_h5, hcipatch, len+4, HCI_COMMAND_PKT); //data:len+head:4
@@ -1337,7 +1344,7 @@ static int hci_download_patch_h4(int dd, int index, uint8_t *data, int len)
 
   RS_DBG("dd:%d, index:%d, len:%d", dd, index, len);
   if (NULL != data) {
-    memcpy(&buf[5], data, len);
+    memcpy_s(&buf[5], sizeof(buf) - 5, data, len);
   }
 
   int cur_index = index;
@@ -1401,9 +1408,9 @@ static int rtk_vendor_change_speed_h4(int fd, RT_U32 baudrate)
 
   cmd[3] = 4; //length;
 #ifdef BAUDRATE_4BYTES
-  memcpy((RT_U16*)&cmd[4], &baudrate, 4);
+  memcpy_s((RT_U16*)&cmd[4], 4, &baudrate, 4);
 #else
-  memcpy((RT_U16*)&cmd[4], &baudrate, 2);
+  memcpy_s((RT_U16*)&cmd[4], 4, &baudrate, 2);
 
   cmd[6] = 0;
   cmd[7] = 0;
@@ -1445,10 +1452,10 @@ static const char *get_firmware_name()
   int ret = 0;
   struct stat st;
 
-  ret = sprintf(firmware_file_name, FIRMWARE_DIRECTORY"rtlbt_fw");
+  ret = snprintf(firmware_file_name, PATH_MAX, FIRMWARE_DIRECTORY"rtlbt_fw");
   if (stat(firmware_file_name, &st) < 0) {
     printf("no stand fw, using 8723as old fw\n");
-    sprintf(firmware_file_name, FIRMWARE_DIRECTORY_OLD"rlt8723a_fw");
+    snprintf(firmware_file_name, PATH_MAX, FIRMWARE_DIRECTORY_OLD"rlt8723a_fw");
   }
   return firmware_file_name;
 }
@@ -1529,7 +1536,7 @@ static void rtk_get_ram_addr(unsigned char bt_addr[0])
 
   RT_U32 addr = rand();
   //memcpy(bt_addr, &addr, sizeof(RT_U32));
-  memcpy(bt_addr, &addr, sizeof(RT_U8));
+  memcpy_s(bt_addr, sizeof(RT_U8), &addr, sizeof(RT_U8));
 }
 
 #define BT_ADDR_DIR "/data/misc/bluetoothd/bt_mac/"
@@ -1551,7 +1558,8 @@ static void rtk_write_btmac2file(unsigned char bt_addr[6])
     chmod(BT_ADDR_FILE, 0666);
     char addr[18]={0};
     addr[17] = '\0';
-    sprintf(addr, "%2x:%2x:%2x:%2x:%2x:%2x", bt_addr[0], bt_addr[1], bt_addr[2], bt_addr[3], bt_addr[4], bt_addr[5]);
+    snprintf(addr, 6, "%2x:%2x:%2x:%2x:%2x:%2x", bt_addr[0], bt_addr[1],
+		                    bt_addr[2], bt_addr[3], bt_addr[4], bt_addr[5]);
     write(fd, addr, strlen(addr));
     close(fd);
   } else {
@@ -1582,10 +1590,10 @@ int rtk_get_bt_config(unsigned char** config_buf, RT_U32* config_baud_rate)
   int ret = 0;
   int i = 0;
 
-  sprintf(bt_config_file_name, "/data/btmac.txt");
+  snprintf(bt_config_file_name, PATH_MAX, "/data/btmac.txt");
   if (stat(bt_config_file_name, &st) < 0) {
     RS_ERR("can't access bt bt_mac_addr file:%s, try use another path\n", bt_config_file_name);
-    sprintf(bt_config_file_name, BT_ADDR_FILE);
+    snprintf(bt_config_file_name,PATH_MAX, BT_ADDR_FILE);
     if (stat(bt_config_file_name, &st) < 0) {
       RS_ERR("can't access bt bt_mac_addr file:%s, try use ramdom BT Addr\n", bt_config_file_name);
 
@@ -1629,11 +1637,11 @@ int rtk_get_bt_config(unsigned char** config_buf, RT_U32* config_baud_rate)
   }
 
 GET_CONFIG:
-  ret = sprintf(bt_config_file_name, BT_CONFIG_DIRECTORY"rtlbt_config");
+  ret = snprintf(bt_config_file_name, PATH_MAX, BT_CONFIG_DIRECTORY"rtlbt_config");
   if (stat(bt_config_file_name, &st) < 0) {
     RS_ERR("can't access bt config file:%s, errno:%d\n", bt_config_file_name, errno);
     printf("no stand config, using 8723as config\n");
-    sprintf(bt_config_file_name, BT_CONFIG_DIRECTORY_OLD"rtk8723_bt_config");
+    snprintf(bt_config_file_name, PATH_MAX, BT_CONFIG_DIRECTORY_OLD"rtk8723_bt_config");
 
     if (stat(bt_config_file_name, &st) < 0) {
       RS_ERR("can't access old bt config file:%s, errno:%d\n", bt_config_file_name, errno);
@@ -1697,9 +1705,9 @@ int rtk_vendor_change_speed_h5(int fd, RT_U32 baudrate)
 
   cmd[2] = 4; //length;
 #ifdef BAUDRATE_4BYTES
-  memcpy((RT_U16*)&cmd[3], &baudrate, 4);
+  memcpy_s((RT_U16*)&cmd[3], 4, &baudrate, 4);
 #else
-  memcpy((RT_U16*)&cmd[3], &baudrate, 2);
+  memcpy_s((RT_U16*)&cmd[3], 4,  &baudrate, 2);
   cmd[5] = 0;
   cmd[6] = 0;
 #endif
@@ -2284,11 +2292,11 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
           buf_len = -1;
         } else {
           RS_DBG("8723as, fw copy direct");
-          memcpy(buf,epatch_buf,buf_len);
+          memcpy_s(buf, buf_len, epatch_buf ,buf_len);
           free(epatch_buf);
           epatch_buf = NULL;
           if (config_len) {
-            memcpy(&buf[buf_len - config_len], config_file_buf, config_len);
+            memcpy_s(&buf[buf_len - config_len], config_len, config_file_buf, config_len);
           }
         }
       }
@@ -2309,7 +2317,7 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
             patch_lmp.opcode = *temp;
             patch_lmp.length = *(temp-1);
             if ((patch_lmp.data = malloc(patch_lmp.length))) {
-              memcpy(patch_lmp.data,temp-2,patch_lmp.length);
+              memcpy_s(patch_lmp.data, patch_lmp.length, temp-2, patch_lmp.length);
             }
             RS_DBG("opcode = 0x%x",patch_lmp.opcode);
             RS_DBG("length = 0x%x",patch_lmp.length);
@@ -2357,16 +2365,17 @@ static int rtk_config(int fd, int proto, int speed, struct termios *ti)
               RS_ERR("Can't alloc memory for multi fw&config, errno:%d", errno);
               buf_len = -1;
             } else {
-              memcpy(buf,&epatch_buf[current_entry.start_offset],current_entry.patch_length);
+              memcpy_s(buf, buf_len, &epatch_buf[current_entry.start_offset], current_entry.patch_length);
               epatch_info->fm_version=cpu_to_le32(epatch_info->fm_version);
-              memcpy(&buf[current_entry.patch_length-4],&epatch_info->fm_version,4);
+              memcpy_s(&buf[current_entry.patch_length-4], buf_len - current_entry.patch_length +4,
+			                                                &epatch_info->fm_version, 4);
               epatch_info->fm_version=cpu_to_le32(epatch_info->fm_version);
             }
             free(epatch_buf);
             epatch_buf = NULL;
 
             if (config_len) {
-              memcpy(&buf[buf_len - config_len], config_file_buf, config_len);
+              memcpy_s(&buf[buf_len - config_len], config_len, config_file_buf, config_len);
             }
           }
         }

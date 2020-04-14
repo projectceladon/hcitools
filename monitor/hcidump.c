@@ -147,10 +147,10 @@ static void device_callback(int fd, uint32_t events, void *user_data)
 
 			switch (cmsg->cmsg_type) {
 			case HCI_DATA_DIR:
-				memcpy(&dir, CMSG_DATA(cmsg), sizeof(dir));
+				memcpy_s(&dir, sizeof(int), CMSG_DATA(cmsg), sizeof(dir));
 				break;
 			case HCI_CMSG_TSTAMP:
-				memcpy(&ctv, CMSG_DATA(cmsg), sizeof(ctv));
+				memcpy_s(&ctv, sizeof(ctv), CMSG_DATA(cmsg), sizeof(ctv));
 				tv = &ctv;
 				break;
 			}
@@ -217,7 +217,7 @@ static void device_info(int fd, uint16_t index, uint8_t *type, uint8_t *bus,
 	*bus = di.type & 0x0f;
 
 	bacpy(bdaddr, &di.bdaddr);
-	memcpy(name, di.name, 8);
+	memcpy_s(name, 8, di.name, 8);
 }
 
 static void device_list(int fd, int max_dev)
@@ -352,7 +352,7 @@ static void stack_internal_callback(int fd, uint32_t events, void *user_data)
 
 		switch (cmsg->cmsg_type) {
 		case HCI_CMSG_TSTAMP:
-			memcpy(&ctv, CMSG_DATA(cmsg), sizeof(ctv));
+			memcpy_s(&ctv, sizeof(ctv), CMSG_DATA(cmsg), sizeof(ctv));
 			tv = &ctv;
 			break;
 		}

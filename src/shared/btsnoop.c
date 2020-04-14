@@ -35,6 +35,7 @@
 #include <limits.h>
 #include <arpa/inet.h>
 #include <sys/stat.h>
+#include <safe_lib.h>
 
 #include "src/shared/btsnoop.h"
 
@@ -176,7 +177,7 @@ struct btsnoop *btsnoop_create(const char *path, size_t max_size,
 	btsnoop->max_count = max_count;
 	btsnoop->max_size = max_size;
 
-	memcpy(hdr.id, btsnoop_id, sizeof(btsnoop_id));
+	memcpy_s(hdr.id, 8, btsnoop_id, sizeof(btsnoop_id));
 	hdr.version = htobe32(btsnoop_version);
 	hdr.type = htobe32(btsnoop->format);
 
@@ -247,7 +248,7 @@ static bool btsnoop_rotate(struct btsnoop *btsnoop)
 	if (btsnoop->fd < 0)
 		return false;
 
-	memcpy(hdr.id, btsnoop_id, sizeof(btsnoop_id));
+	memcpy_s(hdr.id, 8, btsnoop_id, sizeof(btsnoop_id));
 	hdr.version = htobe32(btsnoop_version);
 	hdr.type = htobe32(btsnoop->format);
 

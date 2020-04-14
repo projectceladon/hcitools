@@ -7,6 +7,7 @@ LOCAL_SRC_FILES := hcitool.c \
 	           lib/bluetooth.c \
 		   lib/hci.c \
 		   src/oui.c
+LOCAL_STATIC_LIBRARIES +=  libsafestring_static
 LOCAL_CFLAGS += -Wno-unused-parameter -Wno-pointer-arith \
                 -Wno-missing-field-initializers \
                 -fno-strict-overflow -fno-delete-null-pointer-checks \
@@ -27,6 +28,7 @@ LOCAL_MODULE := hciconfig
 LOCAL_PROPRIETARY_MODULE := true
 LOCAL_SRC_FILES := hciconfig.c csr.c
 LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c
+LOCAL_STATIC_LIBRARIES +=  libsafestring_static
 LOCAL_CFLAGS += -Wno-unused-parameter -Wno-pointer-arith \
                 -Wno-missing-field-initializers \
                 -fno-strict-overflow -fno-delete-null-pointer-checks \
@@ -66,6 +68,7 @@ LOCAL_SRC_FILES := monitor/main.c \
         src/shared/timeout-mainloop.c
 
 LOCAL_SRC_FILES += lib/bluetooth.c lib/hci.c lib/sdp.c
+LOCAL_STATIC_LIBRARIES +=  libsafestring_static
 LOCAL_CFLAGS += -DVERSION=\"5.54\" \
                 -Wno-unused-parameter -Wno-pointer-arith \
                 -Wno-missing-field-initializers \
@@ -98,6 +101,7 @@ LOCAL_SRC_FILES := \
                  hciattach_rtk.c \
                  lib/bluetooth.c \
                  lib/hci.c
+LOCAL_STATIC_LIBRARIES +=  libsafestring_static
 LOCAL_CFLAGS += \
                 -Wno-unused-parameter -Wno-pointer-arith \
                 -Wno-missing-field-initializers \

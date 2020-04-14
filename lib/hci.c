@@ -318,11 +318,12 @@ char *hci_lmtostr(unsigned int lm)
 {
 	char *s, *str;
 	char ptr[] = "SLAVE ";
+	int str_len = 0;
 	s = hci_bit2str(link_mode_map, lm);
 	if (!s)
 		return NULL;
-
-	str = malloc(strlen(ptr) + strlen(s) + 1);
+        str_len = strlen(ptr) + strlen(s) + 1;
+	str = malloc(str_len);
 	if (!str) {
 		free(s);
 		return NULL;
@@ -330,9 +331,9 @@ char *hci_lmtostr(unsigned int lm)
 
 	*str = 0;
 	if (!(lm & HCI_LM_MASTER))
-		strcpy(str, ptr);
+		strcpy_s(str, str_len, ptr);
 
-	strncat(str, s, strlen(s));
+	strncat_s(str, str_len, s, strlen(s));
 	str[strlen(ptr) + strlen(s)] = '\0';
 	free(s);
 	return str;
@@ -1022,7 +1023,7 @@ int hci_inquiry(int dev_id, int len, int nrsp, const uint8_t *lap,
 	ir->flags   = flags;
 
 	if (lap) {
-		memcpy(ir->lap, lap, 3);
+		memcpy_s(ir->lap, 3, lap, 3);
 	} else {
 		ir->lap[0] = 0x33;
 		ir->lap[1] = 0x8b;
@@ -1039,7 +1040,7 @@ int hci_inquiry(int dev_id, int len, int nrsp, const uint8_t *lap,
 		*ii = malloc(size);
 
 	if (*ii) {
-		memcpy((void *) *ii, buf + sizeof(*ir), size);
+		memcpy_s((void *) *ii, size, buf + sizeof(*ir), size);
 		ret = ir->num_rsp;
 	} else
 		ret = -1;
@@ -1211,7 +1212,7 @@ int hci_send_req(int dd, struct hci_request *r, int to)
 			}
 
 			r->rlen = MIN(len, r->rlen);
-			memcpy(r->rparam, ptr, r->rlen);
+			memcpy_s(r->rparam, r->rlen, ptr, r->rlen);
 			goto done;
 
 		case EVT_CMD_COMPLETE:
@@ -1224,7 +1225,7 @@ int hci_send_req(int dd, struct hci_request *r, int to)
 			len -= EVT_CMD_COMPLETE_SIZE;
 
 			r->rlen = MIN(len, r->rlen);
-			memcpy(r->rparam, ptr, r->rlen);
+			memcpy_s(r->rparam, r->rlen, ptr, r->rlen);
 			goto done;
 
 		case EVT_REMOTE_NAME_REQ_COMPLETE:
@@ -1238,7 +1239,7 @@ int hci_send_req(int dd, struct hci_request *r, int to)
 				continue;
 
 			r->rlen = MIN(len, r->rlen);
-			memcpy(r->rparam, ptr, r->rlen);
+			memcpy_s(r->rparam, r->rlen, ptr, r->rlen);
 			goto done;
 
 		case EVT_LE_META_EVENT:
@@ -1249,7 +1250,7 @@ int hci_send_req(int dd, struct hci_request *r, int to)
 
 			len -= 1;
 			r->rlen = MIN(len, r->rlen);
-			memcpy(r->rparam, me->data, r->rlen);
+			memcpy_s(r->rparam, r->rlen, me->data, r->rlen);
 			goto done;
 
 		default:
@@ -1257,7 +1258,7 @@ int hci_send_req(int dd, struct hci_request *r, int to)
 				break;
 
 			r->rlen = MIN(len, r->rlen);
-			memcpy(r->rparam, ptr, r->rlen);
+			memcpy_s(r->rparam, r->rlen, ptr, r->rlen);
 			goto done;
 		}
 	}
@@ -1457,9 +1458,9 @@ int hci_le_add_resolving_list(int dd, const bdaddr_t *bdaddr, uint8_t type,
 	cp.bdaddr_type = type;
 	bacpy(&cp.bdaddr, bdaddr);
 	if (peer_irk)
-		memcpy(cp.peer_irk, peer_irk, 16);
+		memcpy_s(cp.peer_irk, 16, peer_irk, 16);
 	if (local_irk)
-		memcpy(cp.local_irk, local_irk, 16);
+		memcpy_s(cp.local_irk, 16, local_irk, 16);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf = OGF_LE_CTL;
@@ -1606,7 +1607,7 @@ int hci_read_local_name(int dd, int len, char *name, int to)
 	}
 
 	rp.name[247] = '\0';
-	strncpy(name, (char *) rp.name, len);
+	strncpy_s(name, len, (char *) rp.name, len);
 	return 0;
 }
 
@@ -1616,7 +1617,8 @@ int hci_write_local_name(int dd, const char *name, int to)
 	struct hci_request rq;
 
 	memset(&cp, 0, sizeof(cp));
-	strncpy((char *) cp.name, name, sizeof(cp.name) - 1);
+	strncpy_s((char *) cp.name, HCI_MAX_NAME_LENGTH,
+                                   name, sizeof(cp.name) - 1);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_HOST_CTL;
@@ -1662,7 +1664,7 @@ int hci_read_remote_name_with_clock_offset(int dd, const bdaddr_t *bdaddr,
 	}
 
 	rn.name[247] = '\0';
-	strncpy(name, (char *) rn.name, len);
+	strncpy_s(name, len, (char *) rn.name, len);
 	return 0;
 }
 
@@ -1753,7 +1755,7 @@ int hci_read_remote_features(int dd, uint16_t handle, uint8_t *features, int to)
 	}
 
 	if (features)
-		memcpy(features, rp.features, 8);
+		memcpy_s(features, 8, rp.features, 8);
 
 	return 0;
 }
@@ -1791,7 +1793,7 @@ int hci_read_remote_ext_features(int dd, uint16_t handle, uint8_t page,
 		*max_page = rp.max_page_num;
 
 	if (features)
-		memcpy(features, rp.features, 8);
+		memcpy_s(features, 8, rp.features, 8);
 
 	return 0;
 }
@@ -1873,7 +1875,7 @@ int hci_read_local_commands(int dd, uint8_t *commands, int to)
 	}
 
 	if (commands)
-		memcpy(commands, rp.commands, 64);
+		memcpy_s(commands, 64, rp.commands, 64);
 
 	return 0;
 }
@@ -1898,7 +1900,7 @@ int hci_read_local_features(int dd, uint8_t *features, int to)
 	}
 
 	if (features)
-		memcpy(features, rp.features, 8);
+		memcpy_s(features, 8,  rp.features, 8);
 
 	return 0;
 }
@@ -1932,7 +1934,7 @@ int hci_read_local_ext_features(int dd, uint8_t page, uint8_t *max_page,
 		*max_page = rp.max_page_num;
 
 	if (features)
-		memcpy(features, rp.features, 8);
+		memcpy_s(features, 8, rp.features, 8);
 
 	return 0;
 }
@@ -1981,7 +1983,7 @@ int hci_read_class_of_dev(int dd, uint8_t *cls, int to)
 		return -1;
 	}
 
-	memcpy(cls, rp.dev_class, 3);
+	memcpy_s(cls, 3, rp.dev_class, 3);
 	return 0;
 }
 
@@ -2059,7 +2061,7 @@ int hci_read_current_iac_lap(int dd, uint8_t *num_iac, uint8_t *lap, int to)
 	}
 
 	*num_iac = rp.num_current_iac;
-	memcpy(lap, rp.lap, rp.num_current_iac * 3);
+	memcpy_s(lap, 3 * MAX_IAC_LAP, rp.lap, rp.num_current_iac * 3);
 	return 0;
 }
 
@@ -2070,7 +2072,7 @@ int hci_write_current_iac_lap(int dd, uint8_t num_iac, uint8_t *lap, int to)
 
 	memset(&cp, 0, sizeof(cp));
 	cp.num_current_iac = num_iac;
-	memcpy(&cp.lap, lap, num_iac * 3);
+	memcpy_s(&cp.lap, 3 * MAX_IAC_LAP, lap, num_iac * 3);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_HOST_CTL;
@@ -2107,7 +2109,7 @@ int hci_write_stored_link_key(int dd, bdaddr_t *bdaddr, uint8_t *key, int to)
 	memset(&cp, 0, sizeof(cp));
 	cp[0] = 1;
 	bacpy((bdaddr_t *) (cp + 1), bdaddr);
-	memcpy(cp + 7, key, 16);
+	memcpy_s(cp + 7, sizeof(cp) -7, key, 16);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_HOST_CTL;
@@ -2479,7 +2481,7 @@ int hci_read_ext_inquiry_response(int dd, uint8_t *fec, uint8_t *data, int to)
 	}
 
 	*fec = rp.fec;
-	memcpy(data, rp.data, HCI_MAX_EIR_LENGTH);
+	memcpy_s(data, HCI_MAX_EIR_LENGTH, rp.data, HCI_MAX_EIR_LENGTH);
 
 	return 0;
 }
@@ -2492,7 +2494,7 @@ int hci_write_ext_inquiry_response(int dd, uint8_t fec, uint8_t *data, int to)
 
 	memset(&cp, 0, sizeof(cp));
 	cp.fec = fec;
-	memcpy(cp.data, data, HCI_MAX_EIR_LENGTH);
+	memcpy_s(cp.data, HCI_MAX_EIR_LENGTH, data, HCI_MAX_EIR_LENGTH);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_HOST_CTL;
@@ -2583,8 +2585,8 @@ int hci_read_local_oob_data(int dd, uint8_t *hash, uint8_t *randomizer, int to)
 		return -1;
 	}
 
-	memcpy(hash, rp.hash, 16);
-	memcpy(randomizer, rp.randomizer, 16);
+	memcpy_s(hash, 16, rp.hash, 16);
+	memcpy_s(randomizer, 16, rp.randomizer, 16);
 	return 0;
 }
 
@@ -2792,7 +2794,7 @@ int hci_set_afh_classification(int dd, uint8_t *map, int to)
 	struct hci_request rq;
 
 	memset(&cp, 0, sizeof(cp));
-	memcpy(cp.map, map, 10);
+	memcpy_s(cp.map, 10, map, 10);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_HOST_CTL;
@@ -2887,7 +2889,7 @@ int hci_read_afh_map(int dd, uint16_t handle, uint8_t *mode, uint8_t *map,
 	}
 
 	*mode = rp.mode;
-	memcpy(map, rp.map, 10);
+	memcpy_s(map, 10, rp.map, 10);
 	return 0;
 }
 
@@ -3127,7 +3129,7 @@ int hci_le_read_remote_features(int dd, uint16_t handle, uint8_t *features, int 
 	}
 
 	if (features)
-		memcpy(features, rp.features, 8);
+		memcpy_s(features, 8, rp.features, 8);
 
 	return 0;
 }

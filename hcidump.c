@@ -226,11 +226,11 @@ static int process_frames(int dev, int sock, int fd, unsigned long flags)
 			int dir;
 			switch (cmsg->cmsg_type) {
 			case HCI_CMSG_DIR:
-				memcpy(&dir, CMSG_DATA(cmsg), sizeof(int));
+				memcpy_s(&dir, sizeof(int), MSG_DATA(cmsg), sizeof(int));
 				frm.in = (uint8_t) dir;
 				break;
 			case HCI_CMSG_TSTAMP:
-				memcpy(&frm.ts, CMSG_DATA(cmsg),
+				memcpy_s(&frm.ts, sizeof(struct timeval), CMSG_DATA(cmsg),
 						sizeof(struct timeval));
 				break;
 			}
@@ -494,7 +494,7 @@ static int open_file(char *file, int mode, unsigned long flags)
 			btsnoop_version = 1;
 			btsnoop_type = 1002;
 
-			memcpy(hdr->id, btsnoop_id, sizeof(btsnoop_id));
+			memcpy_s(hdr->id, 8, btsnoop_id, sizeof(btsnoop_id));
 			hdr->version = htobe32(btsnoop_version);
 			hdr->type = htobe32(btsnoop_type);
 

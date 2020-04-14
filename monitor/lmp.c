@@ -29,6 +29,7 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <string.h>
+#include <safe_lib.h>
 
 #include "src/shared/util.h"
 #include "display.h"
@@ -68,7 +69,7 @@ static void name_rsp(const void *data, uint8_t size)
 	const struct bt_lmp_name_rsp *pdu = data;
 	char str[15];
 
-	memcpy(str, pdu->fragment, 14);
+	memcpy_s(str, sizeof(str), pdu->fragment, 14);
 	str[14] = '\0';
 
 	print_field("Offset: %u", pdu->offset);
@@ -549,7 +550,8 @@ static void channel_classification(const void *data, uint8_t size)
 	int i;
 
 	for (i = 0; i < 10; i++)
-		sprintf(str + (i * 2), "%2.2x", pdu->classification[i]);
+		snprintf(str + (i * 2), sizeof(str) - (i * 2),
+			       	"%2.2x", pdu->classification[i]);
 
 	print_field("Classification: 0x%s", str);
 }

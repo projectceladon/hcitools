@@ -335,10 +335,10 @@ static void write_bd_data_cmd(const void *data, uint8_t size)
 	packet_print_addr("Address", data, false);
 	packet_hexdump(data + 6, 6);
 
-	memcpy(features, data + 12, 8);
+	memcpy_s(features, 8,  data + 12, 8);
 	packet_print_features_lmp(features, 0);
 
-	memcpy(features, data + 20, 1);
+	memcpy_s(features, 8, data + 20, 1);
 	memset(features + 1, 0, 7);
 	packet_print_features_ll(features);
 

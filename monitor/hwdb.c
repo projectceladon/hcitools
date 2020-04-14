@@ -90,7 +90,7 @@ bool hwdb_get_company(const uint8_t *bdaddr, char **company)
 	if (!bdaddr[2] && !bdaddr[1] && !bdaddr[0])
 		return false;
 
-	sprintf(modalias, "OUI:%2.2X%2.2X%2.2X",
+	snprintf(modalias, sizeof(modalias), "OUI:%2.2X%2.2X%2.2X",
 				bdaddr[5], bdaddr[4], bdaddr[3]);
 
 	udev = udev_new();

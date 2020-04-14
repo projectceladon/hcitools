@@ -27,6 +27,7 @@
 #endif
 
 #include <string.h>
+#include <safe_lib.h>
 
 #include "src/shared/util.h"
 #include "src/shared/queue.h"
@@ -67,13 +68,13 @@ void keys_update_identity_key(const uint8_t key[16])
 
 	irk = queue_peek_tail(irk_list);
 	if (irk && !memcmp(irk->key, empty_key, 16)) {
-		memcpy(irk->key, key, 16);
+		memcpy_s(irk->key, 16, key, 16);
 		return;
 	}
 
 	irk = new0(struct irk_data, 1);
 	if (irk) {
-		memcpy(irk->key, key, 16);
+		memcpy_s(irk->key, 16, key, 16);
 		if (!queue_push_tail(irk_list, irk))
 			free(irk);
 	}
@@ -85,14 +86,14 @@ void keys_update_identity_addr(const uint8_t addr[6], uint8_t addr_type)
 
 	irk = queue_peek_tail(irk_list);
 	if (irk && !memcmp(irk->addr, empty_addr, 6)) {
-		memcpy(irk->addr, addr, 6);
+		memcpy_s(irk->addr, 6, addr, 6);
 		irk->addr_type = addr_type;
 		return;
 	}
 
 	irk = new0(struct irk_data, 1);
 	if (irk) {
-		memcpy(irk->addr, addr, 6);
+		memcpy_s(irk->addr, 6, addr, 6);
 		irk->addr_type = addr_type;
 		if (!queue_push_tail(irk_list, irk))
 			free(irk);
@@ -118,7 +119,7 @@ bool keys_resolve_identity(const uint8_t addr[6], uint8_t ident[6],
 	irk = queue_find(irk_list, match_resolve_irk, addr);
 
 	if (irk) {
-		memcpy(ident, irk->addr, 6);
+		memcpy_s(ident, 6, irk->addr, 6);
 		*ident_type = irk->addr_type;
 		return true;
 	}

@@ -29,6 +29,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <safe_lib.h>
 
 #include "lib/bluetooth.h"
 #include "uuid.h"
@@ -54,7 +55,8 @@ static void bt_uuid16_to_uuid128(const bt_uuid_t *src, bt_uuid_t *dst)
 	 */
 
 	be16 = htons(src->value.u16);
-	memcpy(&dst->value.u128.data[BASE_UUID16_OFFSET], &be16, sizeof(be16));
+	memcpy_s(&dst->value.u128.data[BASE_UUID16_OFFSET], sizeof(be16),
+                                                    &be16, sizeof(be16));
 }
 
 static void bt_uuid32_to_uuid128(const bt_uuid_t *src, bt_uuid_t *dst)
@@ -70,7 +72,8 @@ static void bt_uuid32_to_uuid128(const bt_uuid_t *src, bt_uuid_t *dst)
 	 */
 
 	be32 = htonl(src->value.u32);
-	memcpy(&dst->value.u128.data[BASE_UUID32_OFFSET], &be32, sizeof(be32));
+	memcpy_s(&dst->value.u128.data[BASE_UUID32_OFFSET], sizeof(be32),
+                                                    &be32, sizeof(be32));
 }
 
 void bt_uuid_to_uuid128(const bt_uuid_t *src, bt_uuid_t *dst)
@@ -156,12 +159,12 @@ int bt_uuid_to_string(const bt_uuid_t *uuid, char *str, size_t n)
 	bt_uuid_to_uuid128(uuid, &tmp);
 	data = (uint8_t *) &tmp.value.u128;
 
-	memcpy(&data0, &data[0], 4);
-	memcpy(&data1, &data[4], 2);
-	memcpy(&data2, &data[6], 2);
-	memcpy(&data3, &data[8], 2);
-	memcpy(&data4, &data[10], 4);
-	memcpy(&data5, &data[14], 2);
+	memcpy_s(&data0, sizeof(unsigned int), &data[0], 4);
+	memcpy_s(&data1, sizeof(unsigned short), &data[4], 2);
+	memcpy_s(&data2, sizeof(unsigned short), &data[6], 2);
+	memcpy_s(&data3, sizeof(unsigned short), &data[8], 2);
+	memcpy_s(&data4, sizeof (unsigned int), &data[10], 4);
+	memcpy_s(&data5, sizeof(unsigned short),&data[14], 2);
 
 	snprintf(str, n, "%.8x-%.4x-%.4x-%.4x-%.8x%.4x",
 				ntohl(data0), ntohs(data1),
@@ -250,12 +253,12 @@ static int bt_string_to_uuid128(bt_uuid_t *uuid, const char *string)
 	data4 = htonl(data4);
 	data5 = htons(data5);
 
-	memcpy(&val[0], &data0, 4);
-	memcpy(&val[4], &data1, 2);
-	memcpy(&val[6], &data2, 2);
-	memcpy(&val[8], &data3, 2);
-	memcpy(&val[10], &data4, 4);
-	memcpy(&val[14], &data5, 2);
+	memcpy_s(&val[0], sizeof (uint128_t), &data0, 4);
+	memcpy_s(&val[4], sizeof(uint128_t) - 4,  &data1, 2);
+	memcpy_s(&val[6], sizeof(uint128_t) - 6, &data2, 2);
+	memcpy_s(&val[8], sizeof(uint128_t) - 8, &data3, 2);
+	memcpy_s(&val[10], sizeof(uint128_t) - 10, &data4, 4);
+	memcpy_s(&val[14], sizeof(uint128_t) - 14, &data5, 2);
 
 	bt_uuid128_create(uuid, u128);
 

@@ -90,7 +90,7 @@ static int bcm43xx_read_local_name(int fd, char *name, size_t size)
 
 	name_len = resp[2] - 1;
 
-	strncpy(name, (char *) &resp[7], MIN(name_len, size));
+	strncpy_s(name,  size, (char *) &resp[7], MIN(name_len, size));
 	name[size - 1] = 0;
 
 	free(resp);
@@ -137,7 +137,7 @@ static int bcm43xx_set_bdaddr(int fd, bdaddr_t *bdaddr)
 		printf(" %02x", bdaddr->b[i]);
 	printf("\n");
 
-	memcpy(&cmd[4], bdaddr, 6);
+	memcpy_s(&cmd[4], 6, bdaddr, 6);
 
 	tcflush(fd, TCIOFLUSH);
 
@@ -599,7 +599,7 @@ static int bcm43xx_read_bdaddr(int fd, bdaddr_t *bdaddr)
 		return -1;
 	}
 
-	memcpy(bdaddr, &resp[7], 6);
+	memcpy_s(bdaddr, 6, &resp[7], 6);
 
 	for (i = 5; i >= 0; i--)
 		printf(" %02x", bdaddr->b[i]);

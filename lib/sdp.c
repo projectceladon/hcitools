@@ -204,7 +204,7 @@ static char *string_lookup_uuid(struct tupla *pt0, const uuid_t *uuid)
 {
 	uuid_t tmp_uuid;
 
-	memcpy(&tmp_uuid, uuid, sizeof(tmp_uuid));
+	memcpy_s(&tmp_uuid, sizeof(tmp_uuid), uuid, sizeof(tmp_uuid));
 
 	if (sdp_uuid128_to_uuid(&tmp_uuid)) {
 		switch (tmp_uuid.type) {
@@ -291,12 +291,12 @@ int sdp_uuid2strn(const uuid_t *uuid, char *str, size_t n)
 		unsigned int   data4;
 		unsigned short data5;
 
-		memcpy(&data0, &uuid->value.uuid128.data[0], 4);
-		memcpy(&data1, &uuid->value.uuid128.data[4], 2);
-		memcpy(&data2, &uuid->value.uuid128.data[6], 2);
-		memcpy(&data3, &uuid->value.uuid128.data[8], 2);
-		memcpy(&data4, &uuid->value.uuid128.data[10], 4);
-		memcpy(&data5, &uuid->value.uuid128.data[14], 2);
+		memcpy_s(&data0, sizeof(data0), &uuid->value.uuid128.data[0], 4);
+		memcpy_s(&data1, sizeof(data1), &uuid->value.uuid128.data[4], 2);
+		memcpy_s(&data2, sizeof(data2), &uuid->value.uuid128.data[6], 2);
+		memcpy_s(&data3, sizeof(data3), &uuid->value.uuid128.data[8], 2);
+		memcpy_s(&data4, sizeof(data4), &uuid->value.uuid128.data[10], 4);
+		memcpy_s(&data5, sizeof(data5), &uuid->value.uuid128.data[14], 2);
 
 		snprintf(str, n, "%.8x-%.4x-%.4x-%.4x-%.8x%.4x",
 				ntohl(data0), ntohs(data1),
@@ -339,12 +339,12 @@ void sdp_uuid_print(const uuid_t *uuid)
 		unsigned int data4;
 		unsigned short data5;
 
-		memcpy(&data0, &uuid->value.uuid128.data[0], 4);
-		memcpy(&data1, &uuid->value.uuid128.data[4], 2);
-		memcpy(&data2, &uuid->value.uuid128.data[6], 2);
-		memcpy(&data3, &uuid->value.uuid128.data[8], 2);
-		memcpy(&data4, &uuid->value.uuid128.data[10], 4);
-		memcpy(&data5, &uuid->value.uuid128.data[14], 2);
+		memcpy_s(&data0, sizeof(data0), &uuid->value.uuid128.data[0], 4);
+		memcpy_s(&data1, sizeof(data0), &uuid->value.uuid128.data[4], 2);
+		memcpy_s(&data2, sizeof(data2), &uuid->value.uuid128.data[6], 2);
+		memcpy_s(&data3, sizeof(data3), &uuid->value.uuid128.data[8], 2);
+		memcpy_s(&data4, sizeof(data4), &uuid->value.uuid128.data[10], 4);
+		memcpy_s(&data5, sizeof(data5), &uuid->value.uuid128.data[14], 2);
 
 		SDPDBG("  uint128_t : 0x%.8x-%.4x-%.4x-%.4x-%.8x%.4x",
 				ntohl(data0), ntohs(data1), ntohs(data2),
@@ -404,11 +404,11 @@ sdp_data_t *sdp_data_alloc_with_length(uint8_t dtd, const void *value,
 		d->unitSize += sizeof(uint64_t);
 		break;
 	case SDP_UINT128:
-		memcpy(&d->val.uint128.data, value, sizeof(uint128_t));
+		memcpy_s(&d->val.uint128.data, sizeof(uint128_t), value, sizeof(uint128_t));
 		d->unitSize += sizeof(uint128_t);
 		break;
 	case SDP_INT128:
-		memcpy(&d->val.int128.data, value, sizeof(uint128_t));
+		memcpy_s(&d->val.int128.data, sizeof(uint128_t), value, sizeof(uint128_t));
 		d->unitSize += sizeof(uint128_t);
 		break;
 	case SDP_UUID16:
@@ -440,7 +440,7 @@ sdp_data_t *sdp_data_alloc_with_length(uint8_t dtd, const void *value,
 				return NULL;
 			}
 
-			memcpy(d->val.str, value, length);
+			memcpy_s(d->val.str, length, value, length);
 		} else {
 			SDPERR("Strings of size > USHRT_MAX not supported");
 			free(d);
@@ -894,7 +894,8 @@ recalculate:
 
 	if (!is_seq && !is_alt) {
 		if (src && buf->buf_size >= buf->data_size + data_size) {
-			memcpy(buf->data + buf->data_size, src, data_size);
+			memcpy_s(buf->data + buf->data_size, buf->buf_size - buf->data_size,
+					                                    src, data_size);
 			buf->data_size += data_size;
 		} else if (d->dtd != SDP_DATA_NIL) {
 			SDPDBG("Gen PDU : Can't copy from invalid source or dest");
@@ -1205,7 +1206,7 @@ static sdp_data_t *extract_str(const void *p, int bufsize, int *len)
 		return NULL;
 	}
 	memset(s, 0, n + 1);
-	memcpy(s, p, n);
+	memcpy_s(s, n + 1, p, n);
 
 	*len += n;
 
@@ -2216,7 +2217,7 @@ int sdp_get_string_attr(const sdp_record_t *rec, uint16_t attrid, char *value,
 		/* Verify that it is what the caller expects */
 		if (SDP_IS_TEXT_STR(sdpdata->dtd))
 			if ((int) strlen(sdpdata->val.str) < valuelen) {
-				strcpy(value, sdpdata->val.str);
+				strcpy_s(value, valuelen, sdpdata->val.str);
 				return 0;
 			}
 	errno = EINVAL;
@@ -2675,7 +2676,7 @@ uuid_t *sdp_uuid128_create(uuid_t *u, const void *val)
 {
 	memset(u, 0, sizeof(uuid_t));
 	u->type = SDP_UUID128;
-	memcpy(&u->value.uuid128, val, sizeof(uint128_t));
+	memcpy_s(&u->value.uuid128, sizeof(uint128_t), val, sizeof(uint128_t));
 	return u;
 }
 
@@ -2737,13 +2738,13 @@ void sdp_uuid16_to_uuid128(uuid_t *uuid128, const uuid_t *uuid16)
 	uuid128->type = SDP_UUID128;
 
 	/* extract bytes 2 and 3 of 128bit BT base UUID */
-	memcpy(&data1, &bluetooth_base_uuid.data[2], 2);
+	memcpy_s(&data1, sizeof(data1), &bluetooth_base_uuid.data[2], 2);
 
 	/* add the given UUID (16 bits) */
 	data1 += htons(uuid16->value.uuid16);
 
 	/* set bytes 2 and 3 of the 128 bit value */
-	memcpy(&uuid128->value.uuid128.data[2], &data1, 2);
+	memcpy_s(&uuid128->value.uuid128.data[2], 14, &data1, 2);
 }
 
 void sdp_uuid32_to_uuid128(uuid_t *uuid128, const uuid_t *uuid32)
@@ -2759,13 +2760,13 @@ void sdp_uuid32_to_uuid128(uuid_t *uuid128, const uuid_t *uuid32)
 	uuid128->type = SDP_UUID128;
 
 	/* extract first 4 bytes */
-	memcpy(&data0, &bluetooth_base_uuid.data[0], 4);
+	memcpy_s(&data0, sizeof(unsigned int), &bluetooth_base_uuid.data[0], 4);
 
 	/* add the given UUID (32bits) */
 	data0 += htonl(uuid32->value.uuid32);
 
 	/* set the 4 bytes of the 128 bit value */
-	memcpy(&uuid128->value.uuid128.data[0], &data0, 4);
+	memcpy_s(&uuid128->value.uuid128.data[0], 16, &data0, 4);
 }
 
 uuid_t *sdp_uuid_to_uuid128(const uuid_t *uuid)
@@ -2808,7 +2809,7 @@ int sdp_uuid128_to_uuid(uuid_t *uuid)
 		if (b->data[i] != u->data[i])
 			return 0;
 
-	memcpy(&data, u->data, 4);
+	memcpy_s(&data, sizeof(data), u->data, 4);
 	data = htonl(data);
 	if (data <= 0xffff) {
 		uuid->type = SDP_UUID16;
@@ -2865,7 +2866,7 @@ void sdp_append_to_buf(sdp_buf_t *dst, uint8_t *data, uint32_t len)
 		dst->data_size += sizeof(uint8_t);
 	}
 
-	memcpy(dst->data + dst->data_size, data, len);
+	memcpy_s(dst->data + dst->data_size, dst->buf_size - dst->data_size, data, len);
 	dst->data_size += len;
 
 	dtd = *(uint8_t *) dst->data;
@@ -2950,7 +2951,7 @@ int sdp_device_record_register_binary(sdp_session_t *session, bdaddr_t *device, 
 	} else
 		*p++ = flags;
 
-	memcpy(p, data, size);
+	memcpy_s(p, size, data, size);
 	reqsize += size;
 	reqhdr->plen = htons(reqsize - sizeof(sdp_pdu_hdr_t));
 
@@ -3104,7 +3105,7 @@ int sdp_device_record_unregister_binary(sdp_session_t *session, bdaddr_t *device
 	} else {
 		uint16_t tmp;
 
-		memcpy(&tmp, p, sizeof(tmp));
+		memcpy_s(&tmp, sizeof(tmp), p, sizeof(tmp));
 
 		status = tmp;
 	}
@@ -3183,7 +3184,7 @@ int sdp_device_record_update(sdp_session_t *session, bdaddr_t *device, const sdp
 		status = -1;
 		goto end;
 	}
-	memcpy(p, pdu.data, pdu.data_size);
+	memcpy_s(p, SDP_REQ_BUFFER_SIZE - reqsize, pdu.data, pdu.data_size);
 	reqsize += pdu.data_size;
 	free(pdu.data);
 
@@ -3214,7 +3215,7 @@ int sdp_device_record_update(sdp_session_t *session, bdaddr_t *device, const sdp
 	} else {
 		uint16_t tmp;
 
-		memcpy(&tmp, p, sizeof(tmp));
+		memcpy_s(&tmp, sizeof(tmp), p, sizeof(tmp));
 
 		status = tmp;
 	}
@@ -3359,7 +3360,7 @@ static int gen_dataseq_pdu(uint8_t *dst, const sdp_list_t *seq, uint8_t dtd)
 	SDPDBG("Data Seq : 0x%p", seq);
 	seqlen = sdp_gen_pdu(&buf, dataseq);
 	SDPDBG("Copying : %d", buf.data_size);
-	memcpy(dst, buf.data, buf.data_size);
+	memcpy_s(dst, buf.data_size, buf.data, buf.data_size);
 
 	sdp_data_free(dataseq);
 
@@ -3394,7 +3395,7 @@ static int copy_cstate(uint8_t *pdata, int pdata_len, const sdp_cstate_t *cstate
 			len = pdata_len - 1;
 		}
 		*pdata++ = len;
-		memcpy(pdata, cstate->data, len);
+		memcpy_s(pdata, len, cstate->data, len);
 		return len + 1;
 	}
 	*pdata = 0;
@@ -3719,7 +3720,7 @@ sdp_record_t *sdp_service_attr_req(sdp_session_t *session, uint32_t handle,
 				goto end;
 			rsp_concat_buf.buf_size = rsp_concat_buf.data_size + rsp_count;
 			targetPtr = rsp_concat_buf.data + rsp_concat_buf.data_size;
-			memcpy(targetPtr, pdata, rsp_count);
+			memcpy_s(targetPtr, rsp_count, pdata, rsp_count);
 			rsp_concat_buf.data_size += rsp_count;
 		}
 	} while (cstate);
@@ -4272,10 +4273,10 @@ int sdp_process(sdp_session_t *session)
 			pdata += sizeof(uint16_t); /* point to csrc */
 
 			/* the first csrc contains the sum of partial csrc responses */
-			memcpy(&tcsrc, pcsrc, sizeof(tcsrc));
-			memcpy(&tcsrc2, pdata, sizeof(tcsrc2));
+			memcpy_s(&tcsrc, sizeof(tcsrc), pcsrc, sizeof(tcsrc));
+			memcpy_s(&tcsrc2, sizeof(tcsrc2), pdata, sizeof(tcsrc2));
 			tcsrc += tcsrc2;
-			memcpy(pcsrc, &tcsrc, sizeof(tcsrc));
+			memcpy_s(pcsrc, sizeof(tcsrc), &tcsrc, sizeof(tcsrc));
 
 			pdata += sizeof(uint16_t); /* point to the first handle */
 			rsp_count = csrc * 4;
@@ -4353,7 +4354,7 @@ int sdp_process(sdp_session_t *session)
 	t->rsp_concat_buf.data = realloc(t->rsp_concat_buf.data, t->rsp_concat_buf.data_size + rsp_count);
 	targetPtr = t->rsp_concat_buf.data + t->rsp_concat_buf.data_size;
 	t->rsp_concat_buf.buf_size = t->rsp_concat_buf.data_size + rsp_count;
-	memcpy(targetPtr, pdata, rsp_count);
+	memcpy_s(targetPtr, rsp_count, pdata, rsp_count);
 	t->rsp_concat_buf.data_size += rsp_count;
 
 	if (pcstate->length > 0) {
@@ -4577,7 +4578,7 @@ int sdp_service_search_attr_req(sdp_session_t *session, const sdp_list_t *search
 				goto end;
 			targetPtr = rsp_concat_buf.data + rsp_concat_buf.data_size;
 			rsp_concat_buf.buf_size = rsp_concat_buf.data_size + rsp_count;
-			memcpy(targetPtr, pdata, rsp_count);
+			memcpy_s(targetPtr, rsp_count, pdata, rsp_count);
 			rsp_concat_buf.data_size += rsp_count;
 		}
 	} while (cstate);
@@ -4689,7 +4690,7 @@ static int sdp_connect_local(sdp_session_t *session)
 	session->local = 1;
 
 	sa.sun_family = AF_UNIX;
-	strcpy(sa.sun_path, SDP_UNIX_PATH);
+	strcpy_s(sa.sun_path, UNIX_PATH_MAX, SDP_UNIX_PATH);
 
 	return connect(session->sock, (struct sockaddr *) &sa, sizeof(sa));
 }

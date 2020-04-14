@@ -38,6 +38,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include <sys/socket.h>
+#include <safe_lib.h>
 
 #include "lib/bluetooth.h"
 #include "lib/uuid.h"
@@ -136,10 +137,10 @@ static void assign_ctrl(uint32_t cookie, uint16_t format, const char *name)
 			ctrl_list[i].cookie = cookie;
 			ctrl_list[i].format = format;
 			if (name) {
-				strncpy(ctrl_list[i].name, name, 19);
+				strncpy_s(ctrl_list[i].name, 20, name, 19);
 				ctrl_list[i].name[19] = '\0';
 			} else
-				strcpy(ctrl_list[i].name, "null");
+				strcpy_s(ctrl_list[i].name, 20, "null");
 			break;
 		}
 	}
@@ -158,7 +159,7 @@ static void release_ctrl(uint32_t cookie, uint16_t *format, char *name)
 			if (format)
 				*format = ctrl_list[i].format;
 			if (name)
-				strncpy(name, ctrl_list[i].name, 20);
+				strncpy_s(name, 22, ctrl_list[i].name, 20);
 			break;
 		}
 	}
@@ -304,12 +305,13 @@ static void print_packet(struct timeval *tv, struct ucred *cred, char ident,
 
 	if (channel) {
 		if (use_color()) {
-			n = sprintf(ts_str + ts_pos, "%s", COLOR_CHANNEL_LABEL);
+			n = snprintf(ts_str + ts_pos, sizeof(ts_str) - ts_pos, "%s",
+					                          COLOR_CHANNEL_LABEL);
 			if (n > 0)
 				ts_pos += n;
 		}
 
-		n = sprintf(ts_str + ts_pos, " {%s}", channel);
+		n = snprintf(ts_str + ts_pos, sizeof(ts_str) - ts_pos, " {%s}", channel);
 		if (n > 0) {
 			ts_pos += n;
 			ts_len += n;
@@ -317,12 +319,14 @@ static void print_packet(struct timeval *tv, struct ucred *cred, char ident,
 	} else if (index != HCI_DEV_NONE && index < MAX_INDEX &&
 				index_list[index].frame != last_frame) {
 		if (use_color()) {
-			n = sprintf(ts_str + ts_pos, "%s", COLOR_FRAME_LABEL);
+			n = snprintf(ts_str + ts_pos, sizeof(ts_str) - ts_pos, "%s",
+					                                COLOR_FRAME_LABEL);
 			if (n > 0)
 				ts_pos += n;
 		}
 
-		n = sprintf(ts_str + ts_pos, " #%zu", index_list[index].frame);
+		n = snprintf(ts_str + ts_pos, sizeof(ts_str) - ts_pos, " #%zu",
+				                                   index_list[index].frame);
 		if (n > 0) {
 			ts_pos += n;
 			ts_len += n;
@@ -1745,7 +1749,7 @@ static void print_hex_field(const char *label, const uint8_t *data,
 	str[0] = '\0';
 
 	for (i = 0; i < len; i++)
-		sprintf(str + (i * 2), "%2.2x", data[i]);
+		snprintf(str + (i * 2), sizeof(str) - (i*2), "%2.2x", data[i]);
 
 	print_field("%s: %s", label, str);
 }
@@ -2266,7 +2270,7 @@ static void print_name(const uint8_t *name)
 {
 	char str[249];
 
-	memcpy(str, name, 248);
+	memcpy_s(str, 249, name, 248);
 	str[248] = '\0';
 
 	print_field("Name: %s", str);
@@ -2279,7 +2283,7 @@ static void print_channel_map(const uint8_t *map)
 	int i, n;
 
 	for (i = 0; i < 10; i++)
-		sprintf(str + (i * 2), "%2.2x", map[i]);
+		snprintf(str + (i * 2), sizeof(str) - (i*2), "%2.2x", map[i]);
 
 	print_field("Channel map: 0x%s", str);
 
@@ -2641,7 +2645,7 @@ static void print_features(uint8_t page, const uint8_t *features_array,
 	int i;
 
 	for (i = 0; i < 8; i++) {
-		sprintf(str + (i * 5), " 0x%2.2x", features_array[i]);
+		snprintf(str + (i * 5), sizeof(str) - (i*5), " 0x%2.2x", features_array[i]);
 		features |= ((uint64_t) features_array[i]) << (i * 8);
 	}
 
@@ -2826,7 +2830,7 @@ static void print_le_channel_map(const uint8_t *map)
 	int i, n;
 
 	for (i = 0; i < 5; i++)
-		sprintf(str + (i * 2), "%2.2x", map[i]);
+		snprintf(str + (i * 2), sizeof(str) - (i*2), "%2.2x", map[i]);
 
 	print_field("Channel map: 0x%s", str);
 
@@ -3180,12 +3184,12 @@ static void print_device_id(const void *data, uint8_t data_len)
 	switch (source) {
 	case 0x0001:
 		str = "Bluetooth SIG assigned";
-		sprintf(modalias, "bluetooth:v%04Xp%04Xd%04X",
+		snprintf(modalias, sizeof(modalias), "bluetooth:v%04Xp%04Xd%04X",
 						vendor, product, version);
 		break;
 	case 0x0002:
 		str = "USB Implementer's Forum assigned";
-		sprintf(modalias, "usb:v%04Xp%04Xd%04X",
+		snprintf(modalias, sizeof(modalias), "usb:v%04Xp%04Xd%04X",
 						vendor, product, version);
 		break;
 	default:
@@ -3264,7 +3268,7 @@ static void print_uuid128_list(const char *label, const void *data,
 	for (i = 0; i < count; i++) {
 		const uint8_t *uuid = data + (i * 16);
 
-		sprintf(uuidstr, "%8.8x-%4.4x-%4.4x-%4.4x-%8.8x%4.4x",
+		snprintf(uuidstr, sizeof(uuidstr), "%8.8x-%4.4x-%4.4x-%4.4x-%8.8x%4.4x",
 				get_le32(&uuid[12]), get_le16(&uuid[10]),
 				get_le16(&uuid[8]), get_le16(&uuid[6]),
 				get_le32(&uuid[2]), get_le16(&uuid[0]));
@@ -3602,13 +3606,13 @@ static void print_eir(const uint8_t *eir, uint8_t eir_len, bool le)
 
 		case BT_EIR_NAME_SHORT:
 			memset(name, 0, sizeof(name));
-			memcpy(name, data, data_len);
+			memcpy_s(name, sizeof(name), data, data_len);
 			print_field("Name (short): %s", name);
 			break;
 
 		case BT_EIR_NAME_COMPLETE:
 			memset(name, 0, sizeof(name));
-			memcpy(name, data, data_len);
+			memcpy_s(name, sizeof(name), data, data_len);
 			print_field("Name (complete): %s", name);
 			break;
 
@@ -3673,7 +3677,7 @@ static void print_eir(const uint8_t *eir, uint8_t eir_len, bool le)
 		case BT_EIR_SERVICE_DATA:
 			if (data_len < 2)
 				break;
-			sprintf(label, "Service Data (UUID 0x%4.4x)",
+			snprintf(label, sizeof(label), "Service Data (UUID 0x%4.4x)",
 							get_le16(&data[0]));
 			print_hex_field(label, &data[2], data_len - 2);
 			break;
@@ -3748,7 +3752,7 @@ static void print_eir(const uint8_t *eir, uint8_t eir_len, bool le)
 			break;
 
 		default:
-			sprintf(label, "Unknown EIR field 0x%2.2x", eir[1]);
+			snprintf(label, sizeof(label), "Unknown EIR field 0x%2.2x", eir[1]);
 			print_hex_field(label, data, data_len);
 			break;
 		}
@@ -3875,7 +3879,7 @@ void packet_control(struct timeval *tv, struct ucred *cred,
 
 static int addr2str(const uint8_t *addr, char *str)
 {
-	return sprintf(str, "%2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X",
+	return snprintf(str, 6, "%2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X",
 			addr[5], addr[4], addr[3], addr[2], addr[1], addr[0]);
 }
 
@@ -3908,7 +3912,7 @@ void packet_monitor(struct timeval *tv, struct ucred *cred,
 
 		if (index < MAX_INDEX) {
 			index_list[index].type = ni->type;
-			memcpy(index_list[index].bdaddr, ni->bdaddr, 6);
+			memcpy_s(index_list[index].bdaddr, 6, ni->bdaddr, 6);
 			index_list[index].manufacturer = fallback_manufacturer;
 		}
 
@@ -3919,7 +3923,7 @@ void packet_monitor(struct timeval *tv, struct ucred *cred,
 		if (index < MAX_INDEX)
 			addr2str(index_list[index].bdaddr, str);
 		else
-			sprintf(str, "00:00:00:00:00:00");
+			snprintf(str, sizeof(str), "00:00:00:00:00:00");
 
 		packet_del_index(tv, index, str);
 		break;
@@ -3951,7 +3955,7 @@ void packet_monitor(struct timeval *tv, struct ucred *cred,
 		if (index < MAX_INDEX)
 			addr2str(index_list[index].bdaddr, str);
 		else
-			sprintf(str, "00:00:00:00:00:00");
+			snprintf(str, sizeof(str), "00:00:00:00:00:00");
 
 		packet_open_index(tv, index, str);
 		break;
@@ -3959,7 +3963,7 @@ void packet_monitor(struct timeval *tv, struct ucred *cred,
 		if (index < MAX_INDEX)
 			addr2str(index_list[index].bdaddr, str);
 		else
-			sprintf(str, "00:00:00:00:00:00");
+			snprintf(str, sizeof(str), "00:00:00:00:00:00");
 
 		packet_close_index(tv, index, str);
 		break;
@@ -3968,7 +3972,7 @@ void packet_monitor(struct timeval *tv, struct ucred *cred,
 		manufacturer = le16_to_cpu(ii->manufacturer);
 
 		if (index < MAX_INDEX) {
-			memcpy(index_list[index].bdaddr, ii->bdaddr, 6);
+			memcpy_s(index_list[index].bdaddr, 6, ii->bdaddr, 6);
 			index_list[index].manufacturer = manufacturer;
 		}
 
@@ -4008,7 +4012,7 @@ void packet_monitor(struct timeval *tv, struct ucred *cred,
 		packet_ctrl_event(tv, cred, index, data, size);
 		break;
 	default:
-		sprintf(extra_str, "(code %d len %d)", opcode, size);
+		snprintf(extra_str, sizeof(extra_str), "(code %d len %d)", opcode, size);
 		print_packet(tv, cred, '*', index, NULL, COLOR_ERROR,
 					"Unknown packet", NULL, extra_str);
 		packet_hexdump(data, size);
@@ -4024,7 +4028,7 @@ void packet_simulator(struct timeval *tv, uint16_t frequency,
 	if (tv && time_offset == ((time_t) -1))
 		time_offset = tv->tv_sec;
 
-	sprintf(str, "%u MHz", frequency);
+	snprintf(str, sizeof(str), "%u MHz", frequency);
 
 	print_packet(tv, NULL, '*', 0, NULL, COLOR_PHY_PACKET,
 					"Physical packet:", NULL, str);
@@ -5864,7 +5868,7 @@ static void read_bd_addr_rsp(const void *data, uint8_t size)
 	print_bdaddr(rsp->bdaddr);
 
 	if (index_current < MAX_INDEX)
-		memcpy(index_list[index_current].bdaddr, rsp->bdaddr, 6);
+		memcpy_s(index_list[index_current].bdaddr, 6, rsp->bdaddr, 6);
 }
 
 static void read_data_block_size_rsp(const void *data, uint8_t size)
@@ -7786,7 +7790,7 @@ static void le_read_iso_tx_sync_rsp(const void *data, uint8_t size)
 	print_field("Sequence Number: %d", le16_to_cpu(rsp->seq));
 	print_field("Timestamp: %d", le32_to_cpu(rsp->timestamp));
 
-	memcpy(&offset, rsp->offset, sizeof(rsp->offset));
+	memcpy_s(&offset, sizeof(offset), rsp->offset, sizeof(rsp->offset));
 
 	print_field("Offset: %d", le32_to_cpu(offset));
 }
@@ -7826,7 +7830,7 @@ static void print_usec_interval(const char *prefix, const uint8_t interval[3])
 {
 	uint32_t u24 = 0;
 
-	memcpy(&u24, interval, 3);
+	memcpy_s(&u24, sizeof(u24), interval, 3);
 	print_field("%s: %u us (0x%6.6x)", prefix, le32_to_cpu(u24),
 						le32_to_cpu(u24));
 }
@@ -10903,7 +10907,7 @@ void packet_new_index(struct timeval *tv, uint16_t index, const char *label,
 {
 	char details[48];
 
-	sprintf(details, "(%s,%s,%s)", hci_typetostr(type),
+	snprintf(details, sizeof(details), "(%s,%s,%s)", hci_typetostr(type),
 					hci_bustostr(bus), name);
 
 	print_packet(tv, NULL, '=', index, NULL, COLOR_NEW_INDEX,
@@ -10933,7 +10937,7 @@ void packet_index_info(struct timeval *tv, uint16_t index, const char *label,
 {
 	char details[128];
 
-	sprintf(details, "(%s)", bt_compidtostr(manufacturer));
+	snprintf(details, sizeof(details), "(%s)", bt_compidtostr(manufacturer));
 
 	print_packet(tv, NULL, '=', index, NULL, COLOR_INDEX_INFO,
 					"Index Info", label, details);
@@ -10945,7 +10949,7 @@ void packet_vendor_diag(struct timeval *tv, uint16_t index,
 {
 	char extra_str[16];
 
-	sprintf(extra_str, "(len %d)", size);
+	snprintf(extra_str, sizeof(extra_str), "(len %d)", size);
 
 	print_packet(tv, NULL, '=', index, NULL, COLOR_VENDOR_DIAG,
 					"Vendor Diagnostic", NULL, extra_str);
@@ -11082,7 +11086,7 @@ void packet_hci_command(struct timeval *tv, struct ucred *cred, uint16_t index,
 	index_list[index].frame++;
 
 	if (size < HCI_COMMAND_HDR_SIZE || size > BTSNOOP_MAX_PACKET_SIZE) {
-		sprintf(extra_str, "(len %d)", size);
+		snprintf(extra_str, sizeof(extra_str), "(len %d)", size);
 		print_packet(tv, cred, '*', index, NULL, COLOR_ERROR,
 			"Malformed HCI Command packet", NULL, extra_str);
 		return;
@@ -11138,7 +11142,8 @@ void packet_hci_command(struct timeval *tv, struct ucred *cred, uint16_t index,
 		}
 	}
 
-	sprintf(extra_str, "(0x%2.2x|0x%4.4x) plen %d", ogf, ocf, hdr->plen);
+	snprintf(extra_str, sizeof(extra_str),
+		       	"(0x%2.2x|0x%4.4x) plen %d", ogf, ocf, hdr->plen);
 
 	print_packet(tv, cred, '<', index, NULL, opcode_color, "HCI Command",
 							opcode_str, extra_str);
@@ -11190,7 +11195,7 @@ void packet_hci_event(struct timeval *tv, struct ucred *cred, uint16_t index,
 	index_list[index].frame++;
 
 	if (size < HCI_EVENT_HDR_SIZE) {
-		sprintf(extra_str, "(len %d)", size);
+		snprintf(extra_str, sizeof(extra_str), "(len %d)", size);
 		print_packet(tv, cred, '*', index, NULL, COLOR_ERROR,
 			"Malformed HCI Event packet", NULL, extra_str);
 		packet_hexdump(data, size);
@@ -11218,7 +11223,7 @@ void packet_hci_event(struct timeval *tv, struct ucred *cred, uint16_t index,
 		event_str = "Unknown";
 	}
 
-	sprintf(extra_str, "(0x%2.2x) plen %d", hdr->evt, hdr->plen);
+	snprintf(extra_str, sizeof(extra_str), "(0x%2.2x) plen %d", hdr->evt, hdr->plen);
 
 	print_packet(tv, cred, '>', index, NULL, event_color, "HCI Event",
 						event_str, extra_str);
@@ -11282,8 +11287,8 @@ void packet_hci_acldata(struct timeval *tv, struct ucred *cred, uint16_t index,
 	data += HCI_ACL_HDR_SIZE;
 	size -= HCI_ACL_HDR_SIZE;
 
-	sprintf(handle_str, "Handle %d", acl_handle(handle));
-	sprintf(extra_str, "flags 0x%2.2x dlen %d", flags, dlen);
+	snprintf(handle_str, sizeof(handle_str), "Handle %d", acl_handle(handle));
+	snprintf(extra_str, sizeof(extra_str), "flags 0x%2.2x dlen %d", flags, dlen);
 
 	print_packet(tv, cred, in ? '>' : '<', index, NULL, COLOR_HCI_ACLDATA,
 				in ? "ACL Data RX" : "ACL Data TX",
@@ -11331,8 +11336,8 @@ void packet_hci_scodata(struct timeval *tv, struct ucred *cred, uint16_t index,
 	data += HCI_SCO_HDR_SIZE;
 	size -= HCI_SCO_HDR_SIZE;
 
-	sprintf(handle_str, "Handle %d", acl_handle(handle));
-	sprintf(extra_str, "flags 0x%2.2x dlen %d", flags, hdr->dlen);
+	snprintf(handle_str, sizeof(handle_str), "Handle %d", acl_handle(handle));
+	snprintf(extra_str, sizeof(extra_str), "flags 0x%2.2x dlen %d", flags, hdr->dlen);
 
 	print_packet(tv, cred, in ? '>' : '<', index, NULL, COLOR_HCI_SCODATA,
 				in ? "SCO Data RX" : "SCO Data TX",
@@ -11378,8 +11383,8 @@ void packet_hci_isodata(struct timeval *tv, struct ucred *cred, uint16_t index,
 	data += sizeof(*hdr);
 	size -= sizeof(*hdr);
 
-	sprintf(handle_str, "Handle %d", acl_handle(handle));
-	sprintf(extra_str, "flags 0x%2.2x dlen %d", flags, hdr->dlen);
+	snprintf(handle_str, sizeof(handle_str), "Handle %d", acl_handle(handle));
+	snprintf(extra_str, sizeof(extra_str), "flags 0x%2.2x dlen %d", flags, hdr->dlen);
 
 	print_packet(tv, cred, in ? '>' : '<', index, NULL, COLOR_HCI_SCODATA,
 				in ? "ISO Data RX" : "ISO Data TX",
@@ -11416,7 +11421,7 @@ void packet_ctrl_open(struct timeval *tv, struct ucred *cred, uint16_t index,
 	data += 6;
 	size -= 6;
 
-	sprintf(channel, "0x%4.4x", cookie);
+	snprintf(channel, sizeof(channel), "0x%4.4x", cookie);
 
 	if ((format == CTRL_RAW || format == CTRL_USER || format == CTRL_MGMT)
 								&& size >= 8) {
@@ -11449,7 +11454,7 @@ void packet_ctrl_open(struct timeval *tv, struct ucred *cred, uint16_t index,
 
 		assign_ctrl(cookie, format, comm);
 
-		sprintf(details, "%sversion %u.%u",
+		snprintf(details, sizeof(details), "%sversion %u.%u",
 				flags & 0x0001 ? "(privileged) " : "",
 				version, revision);
 
@@ -11475,7 +11480,7 @@ void packet_ctrl_open(struct timeval *tv, struct ucred *cred, uint16_t index,
 
 		assign_ctrl(cookie, format, NULL);
 
-		sprintf(label, "0x%4.4x", format);
+		snprintf(label, sizeof(label), "0x%4.4x", format);
 
 		print_packet(tv, cred, '@', index, channel, COLOR_CTRL_OPEN,
 						"Control Open", label, NULL);
@@ -11504,7 +11509,7 @@ void packet_ctrl_close(struct timeval *tv, struct ucred *cred, uint16_t index,
 	data += 4;
 	size -= 4;
 
-	sprintf(channel, "0x%4.4x", cookie);
+	snprintf(channel, sizeof(channel), "0x%4.4x", cookie);
 
 	release_ctrl(cookie, &format, label);
 
@@ -11519,7 +11524,7 @@ void packet_ctrl_close(struct timeval *tv, struct ucred *cred, uint16_t index,
 		title = "MGMT Close";
 		break;
 	default:
-		sprintf(label, "0x%4.4x", format);
+		snprintf(label, sizeof(label), "0x%4.4x", format);
 		title = "Control Close";
 		break;
 	}
@@ -13743,14 +13748,14 @@ void packet_ctrl_command(struct timeval *tv, struct ucred *cred, uint16_t index,
 	data += 4;
 	size -= 4;
 
-	sprintf(channel, "0x%4.4x", cookie);
+	snprintf(channel, sizeof(channel), "0x%4.4x", cookie);
 
 	format = get_format(cookie);
 
 	if (format != CTRL_MGMT) {
 		char label[7];
 
-		sprintf(label, "0x%4.4x", format);
+		snprintf(label, sizeof(label), "0x%4.4x", format);
 
 		print_packet(tv, cred, '@', index, channel, COLOR_CTRL_CLOSE,
 						"Control Command", label, NULL);
@@ -13788,7 +13793,7 @@ void packet_ctrl_command(struct timeval *tv, struct ucred *cred, uint16_t index,
 		mgmt_str = "Unknown";
 	}
 
-	sprintf(extra_str, "(0x%4.4x) plen %d", opcode, size);
+	snprintf(extra_str, sizeof(extra_str), "(0x%4.4x) plen %d", opcode, size);
 
 	print_packet(tv, cred, '@', index, channel, mgmt_color,
 					"MGMT Command", mgmt_str, extra_str);
@@ -13837,14 +13842,14 @@ void packet_ctrl_event(struct timeval *tv, struct ucred *cred, uint16_t index,
 	data += 4;
 	size -= 4;
 
-	sprintf(channel, "0x%4.4x", cookie);
+	snprintf(channel, sizeof(channel), "0x%4.4x", cookie);
 
 	format = get_format(cookie);
 
 	if (format != CTRL_MGMT) {
 		char label[7];
 
-		sprintf(label, "0x%4.4x", format);
+		snprintf(label, sizeof(label), "0x%4.4x", format);
 
 		print_packet(tv, cred, '@', index, channel, COLOR_CTRL_CLOSE,
 						"Control Event", label, NULL);
@@ -13882,7 +13887,7 @@ void packet_ctrl_event(struct timeval *tv, struct ucred *cred, uint16_t index,
 		mgmt_str = "Unknown";
 	}
 
-	sprintf(extra_str, "(0x%4.4x) plen %d", opcode, size);
+	snprintf(extra_str, sizeof(extra_str), "(0x%4.4x) plen %d", opcode, size);
 
 	print_packet(tv, cred, '@', index, channel, mgmt_color,
 					"MGMT Event", mgmt_str, extra_str);

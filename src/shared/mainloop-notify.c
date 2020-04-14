@@ -37,6 +37,7 @@
 #include <sys/signalfd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <safe_lib.h>
 
 #include "mainloop.h"
 #include "mainloop-notify.h"
@@ -86,7 +87,8 @@ void mainloop_notify_init(void)
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, sock, sizeof(addr.sun_path) - 1);
+	strncpy_s(addr.sun_path, sizeof(addr.sun_path),
+		       	sock, sizeof(addr.sun_path) - 1);
 
 	if (addr.sun_path[0] == '@')
 		addr.sun_path[0] = '\0';

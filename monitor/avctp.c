@@ -1249,7 +1249,7 @@ response:
 				if (!l2cap_frame_get_u8(frame, &c))
 					goto failed;
 
-				sprintf(&attrval[idx], "%1c",
+				snprintf(&attrval[idx], sizeof(attrval) - idx, "%1c",
 							isprint(c) ? c : '.');
 			}
 			print_field("%*cContinuingAttributeValue: %s",
@@ -1295,7 +1295,7 @@ response:
 			if (!l2cap_frame_get_u8(frame, &c))
 				goto failed;
 
-			sprintf(&attrval[idx], "%1c", isprint(c) ? c : '.');
+			snprintf(&attrval[idx], sizeof(attrval) - idx, "%1c", isprint(c) ? c : '.');
 		}
 		print_field("%*cAttributeValue: %s", (indent - 8),
 								' ', attrval);

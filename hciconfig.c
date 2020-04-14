@@ -48,6 +48,7 @@
 #include "src/shared/util.h"
 #include "csr.h"
 
+#include <safe_lib.h>
 static struct hci_dev_info di;
 static int all;
 
@@ -831,13 +832,14 @@ static char *get_minor_device_name(int major, int minor)
 
 		switch (minor & 48) {
 		case 16:
-			strncpy(cls_str, "Keyboard", sizeof(cls_str));
+			strncpy_s(cls_str, sizeof(cls_str),"Keyboard", sizeof(cls_str));
 			break;
 		case 32:
-			strncpy(cls_str, "Pointing device", sizeof(cls_str));
+			strncpy_s(cls_str, sizeof(cls_str), "Pointing device", sizeof(cls_str));
 			break;
 		case 48:
-			strncpy(cls_str, "Combo keyboard/pointing device", sizeof(cls_str));
+			strncpy_s(cls_str, sizeof(cls_str), "Combo keyboard/pointing device",
+					                                  sizeof(cls_str));
 			break;
 		}
 		if ((minor & 15) && (strlen(cls_str) > 0))
@@ -847,25 +849,32 @@ static char *get_minor_device_name(int major, int minor)
 		case 0:
 			break;
 		case 1:
-			strncat(cls_str, "Joystick", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "Joystick",
+					             sizeof(cls_str) - strlen(cls_str));
 			break;
 		case 2:
-			strncat(cls_str, "Gamepad", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "Gamepad",
+					              sizeof(cls_str) - strlen(cls_str));
 			break;
 		case 3:
-			strncat(cls_str, "Remote control", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "Remote control",
+					              sizeof(cls_str) - strlen(cls_str));
 			break;
 		case 4:
-			strncat(cls_str, "Sensing device", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "Sensing device",
+					              sizeof(cls_str) - strlen(cls_str));
 			break;
 		case 5:
-			strncat(cls_str, "Digitizer tablet", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "Digitizer tablet",
+					               sizeof(cls_str) - strlen(cls_str));
 			break;
 		case 6:
-			strncat(cls_str, "Card reader", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "Card reader",
+					               sizeof(cls_str) - strlen(cls_str));
 			break;
 		default:
-			strncat(cls_str, "(reserved)", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "(reserved)",
+					               sizeof(cls_str) - strlen(cls_str));
 			break;
 		}
 		cls_str[47] = '\0';
@@ -1297,7 +1306,7 @@ static void cmd_inq_data(int ctl, int hdev, char *opt)
 			size = HCI_MAX_EIR_LENGTH;
 
 		for (i = 0; i < size; i++) {
-			memcpy(tmp, opt + (i * 2), 2);
+			memcpy_s(tmp, 3,  opt + (i * 2), 2);
 			data[i] = strtol(tmp, NULL, 16);
 		}
 

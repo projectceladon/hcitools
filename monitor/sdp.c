@@ -149,7 +149,7 @@ static void print_string(uint8_t indent, const uint8_t *data, uint32_t size)
 	char *str = alloca(size + 1);
 
 	str[size] = '\0';
-	strncpy(str, (const char *) data, size);
+	strncpy_s(str, size + 1, (const char *) data, size);
 
 	print_field("%*c%s [len %d]", indent, ' ', str, size);
 }
@@ -421,7 +421,7 @@ static void store_continuation(struct tid_data *tid,
 		print_text(COLOR_ERROR, "invalid continuation size");
 		return;
 	}
-	memcpy(tid->cont, data, size);
+	memcpy_s(tid->cont, sizeof(tid->cont), data, size);
 	print_continuation(data, size);
 }
 
@@ -468,8 +468,7 @@ static void handle_continuation(struct tid_data *tid, bool nested,
 		if (cont_list[i].cont[0] != tid->cont[0])
 			continue;
 
-		if (!memcmp(cont_list[i].cont + 1,
-					tid->cont + 1, tid->cont[0])) {
+		if (!memcmp(cont_list[i].cont + 1, tid->cont + 1, tid->cont[0])) {
 			n = i;
 			break;
 		}
@@ -493,7 +492,7 @@ static void handle_continuation(struct tid_data *tid, bool nested,
 	cont_list[n].data = newdata;
 
 	if (bytes > 0) {
-		memcpy(cont_list[n].data + cont_list[n].size, data, bytes);
+		memcpy_s(cont_list[n].data + cont_list[n].size, bytes, data, bytes);
 		cont_list[n].size += bytes;
 	}
 
@@ -507,7 +506,7 @@ static void handle_continuation(struct tid_data *tid, bool nested,
 		cont_list[n].data = NULL;
 		cont_list[n].size = 0;
 	} else
-		memcpy(cont_list[i].cont, data + bytes, data[bytes] + 1);
+		memcpy_s(cont_list[i].cont, 17, data + bytes, data[bytes] + 1);
 }
 
 static uint16_t common_rsp(const struct l2cap_frame *frame,

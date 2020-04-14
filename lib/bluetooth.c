@@ -55,7 +55,7 @@ char *batostr(const bdaddr_t *ba)
 	if (!str)
 		return NULL;
 
-	sprintf(str, "%2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X",
+	snprintf(str, 18, "%2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X",
 		ba->b[0], ba->b[1], ba->b[2],
 		ba->b[3], ba->b[4], ba->b[5]);
 
@@ -77,14 +77,14 @@ bdaddr_t *strtoba(const char *str)
 
 int ba2str(const bdaddr_t *ba, char *str)
 {
-	return sprintf(str, "%2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X",
+	return snprintf(str, 18, "%2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X",
 		ba->b[5], ba->b[4], ba->b[3], ba->b[2], ba->b[1], ba->b[0]);
 }
 
 /* Match kernel's lowercase printing of mac address (%pMR) */
 int ba2strlc(const bdaddr_t *ba, char *str)
 {
-	return sprintf(str, "%2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x",
+	return snprintf(str, 18, "%2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x",
 		ba->b[5], ba->b[4], ba->b[3], ba->b[2], ba->b[1], ba->b[0]);
 }
 

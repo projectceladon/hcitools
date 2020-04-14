@@ -473,7 +473,7 @@ static void print_features(const uint8_t *features_array)
 	int i;
 
 	for (i = 0; i < 8; i++) {
-		sprintf(str + (i * 5), " 0x%2.2x", features_array[i]);
+		snprintf(str + (i * 5), sizeof(str) - (i * 5), " 0x%2.2x", features_array[i]);
 		features |= ((uint64_t) features_array[i]) << (i * 8);
 	}
 

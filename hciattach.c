@@ -50,6 +50,7 @@
 #include "src/shared/tty.h"
 
 #include "hciattach.h"
+#include <safe_lib.h>
 
 struct uart_t {
 	char *type;
@@ -589,7 +590,7 @@ static int csr(int fd, struct uart_t *u, struct termios *ti)
 	char temp[512];
 	int i;
 	for (i=0; i < rlen; i++)
-		sprintf(temp + (i*3), "-%02X", resp[i]);
+		snprintf(temp + (i*3), sizeof(tmp) - (i*3), "-%02X", resp[i]);
 	fprintf(stderr, "Reading CSR build ID %d [%s]\n", rlen, temp + 1);
 	// In theory, it should look like :
 	// 04-FF-13-FF-01-00-09-00-00-00-19-28-00-00-73-00-00-00-00-00-00-00
@@ -632,7 +633,7 @@ static int csr(int fd, struct uart_t *u, struct termios *ti)
 	char temp[512];
 	int i;
 	for (i=0; i < rlen; i++)
-		sprintf(temp + (i*3), "-%02X", resp[i]);
+		snprintf(temp + (i*3), sizeof(temp) - (i*3), "-%02X", resp[i]);
 	fprintf(stderr, "Reading CSR UART speed %d [%s]\n", rlen, temp+1);
 	}
 #endif
@@ -670,7 +671,7 @@ static int csr(int fd, struct uart_t *u, struct termios *ti)
 	char temp[512];
 	int i;
 	for(i = 0; i < clen; i++)
-		sprintf(temp + (i*3), "-%02X", cmd[i]);
+		snprintf(temp + (i*3), sizeof(temp) - (i*3), "-%02X", cmd[i]);
 	fprintf(stderr, "Writing CSR UART speed %d [%s]\n", clen, temp + 1);
 	// In theory, it should look like :
 	// 01-00-FC-13-C2-02-00-09-00-03-00-02-68-00-00-BF-0E-00-00-00-00-00-00
@@ -1372,7 +1373,7 @@ int main(int argc, char *argv[])
 		case 0:
 			dev[0] = 0;
 			if (!strchr(opt, '/'))
-				strcpy(dev, "/dev/");
+				strcpy_s(dev, PATH_MAX, "/dev/");
                         if (strlen(dev) + strlen(opt) >= PATH_MAX) {
                                fprintf(stderr, "Device path too long\n");
                                exit(1);

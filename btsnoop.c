@@ -40,8 +40,9 @@
 #include <arpa/inet.h>
 #include <sys/stat.h>
 
-#include "src/shared/btsnoop.h"
+#include <safe_lib.h>
 
+#include "src/shared/btsnoop.h"
 struct btsnoop_hdr {
 	uint8_t		id[8];		/* Identification Pattern */
 	uint32_t	version;	/* Version Number = 1 */
@@ -77,7 +78,7 @@ static int create_btsnoop(const char *path)
 		return -1;
 	}
 
-	memcpy(hdr.id, btsnoop_id, sizeof(btsnoop_id));
+	memcpy_s(hdr.id, sizeof(hdr.id), btsnoop_id, sizeof(btsnoop_id));
 	hdr.version = htobe32(btsnoop_version);
 	hdr.type = htobe32(2001);
 
@@ -484,10 +485,10 @@ next_packet:
 
 			/* next 4 bytes are data len and cid */
 			current_cid = buf[8] << 8 | buf[7];
-			memcpy(pdu_buf, buf + 9, len - 9);
+			memcpy_s(pdu_buf, sizeof(pdu_buf), buf + 9, len - 9);
 			pdu_len = len - 9;
 		} else if (acl_flags & 0x01) {
-			memcpy(pdu_buf + pdu_len, buf + 5, len - 5);
+			memcpy_s(pdu_buf + pdu_len, sizeof(pdu_buf) - pdu_len, buf + 5, len - 5);
 			pdu_len += len - 5;
 		}
 	}

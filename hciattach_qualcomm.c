@@ -135,7 +135,7 @@ static int qualcomm_load_firmware(int fd, const char *firmware, const char *bdad
 			bdaddr_t bdaddr;
 			if (bdaddr_s != NULL) {
 				str2ba(bdaddr_s, &bdaddr);
-				memcpy(&data[3], &bdaddr, sizeof(bdaddr_t));
+				memcpy_s(&data[3], sizeof(data) - 3, &bdaddr, sizeof(bdaddr_t));
 			}
 		}
 

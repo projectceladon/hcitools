@@ -140,7 +140,7 @@ static void new_index(struct timeval *tv, uint16_t index,
 	dev = dev_alloc(index);
 
 	dev->type = ni->type;
-	memcpy(dev->bdaddr, ni->bdaddr, 6);
+	memcpy_s(dev->bdaddr, 6, ni->bdaddr, 6);
 
 	queue_push_tail(dev_list, dev);
 }
@@ -185,7 +185,7 @@ static void rsp_read_bd_addr(struct hci_dev *dev, struct timeval *tv,
 	if (rsp->status)
 		return;
 
-	memcpy(dev->bdaddr, rsp->bdaddr, 6);
+	memcpy_s(dev->bdaddr, 6, rsp->bdaddr, 6);
 }
 
 static void evt_cmd_complete(struct hci_dev *dev, struct timeval *tv,

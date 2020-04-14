@@ -44,7 +44,7 @@
 #include "lib/bluetooth.h"
 #include "lib/hci.h"
 #include "lib/hci_lib.h"
-
+#include "safe_lib.h"
 #include "src/oui.h"
 
 #ifndef MIN
@@ -339,47 +339,47 @@ static char *get_minor_device_name(int major, int minor)
 
 		switch (minor & 48) {
 		case 16:
-			strncpy(cls_str, "Keyboard", sizeof(cls_str));
+			strncpy_s(cls_str, sizeof(cls_str), "Keyboard", sizeof(cls_str));
 			break;
 		case 32:
-			strncpy(cls_str, "Pointing device", sizeof(cls_str));
+			strncpy_s(cls_str, sizeof(cls_str), "Pointing device", sizeof(cls_str));
 			break;
 		case 48:
-			strncpy(cls_str, "Combo keyboard/pointing device", sizeof(cls_str));
+			strncpy_s(cls_str, sizeof(cls_str), "Combo keyboard/pointing device", sizeof(cls_str));
 			break;
 		}
 		if ((minor & 15) && (strlen(cls_str) > 0))
-			strcat(cls_str, "/");
+			strcat_s(cls_str, sizeof(cls_str), "/");
 
 		switch (minor & 15) {
 		case 0:
 			break;
 		case 1:
-			strncat(cls_str, "Joystick",
+			strncat_s(cls_str,  sizeof(cls_str), "Joystick",
 					sizeof(cls_str) - strlen(cls_str) - 1);
 			break;
 		case 2:
-			strncat(cls_str, "Gamepad",
+			strncat_s(cls_str,  sizeof(cls_str), "Gamepad",
 					sizeof(cls_str) - strlen(cls_str) - 1);
 			break;
 		case 3:
-			strncat(cls_str, "Remote control",
+			strncat_s(cls_str, sizeof(cls_str), "Remote control",
 					sizeof(cls_str) - strlen(cls_str) - 1);
 			break;
 		case 4:
-			strncat(cls_str, "Sensing device",
+			strncat_s(cls_str, sizeof(cls_str), "Sensing device",
 					sizeof(cls_str) - strlen(cls_str) - 1);
 			break;
 		case 5:
-			strncat(cls_str, "Digitizer tablet",
+			strncat_s(cls_str, sizeof(cls_str), "Digitizer tablet",
 					sizeof(cls_str) - strlen(cls_str) - 1);
 			break;
 		case 6:
-			strncat(cls_str, "Card reader",
+			strncat_s(cls_str, sizeof(cls_str), "Card reader",
 					sizeof(cls_str) - strlen(cls_str) - 1);
 			break;
 		default:
-			strncat(cls_str, "(reserved)",
+			strncat_s(cls_str,  sizeof(cls_str), "(reserved)",
 					sizeof(cls_str) - strlen(cls_str) - 1);
 			break;
 		}
@@ -683,7 +683,7 @@ static void cmd_scan(int dev_id, int argc, char **argv)
 					(info+i)->pscan_rep_mode,
 					(info+i)->clock_offset | 0x8000,
 					sizeof(name), name, 100000) < 0)
-				strcpy(name, "n/a");
+				strcpy_s(name, sizeof(name), "n/a");
 
 			for (n = 0; n < 248 && name[n]; n++) {
 				if ((unsigned char) name[i] < 32 || name[i] == 127)
@@ -756,7 +756,7 @@ static void cmd_scan(int dev_id, int argc, char **argv)
 			printf("Device name:\t%s\n", name);
 
 		if (extcls) {
-			memcpy(cls, (info+i)->dev_class, 3);
+			memcpy_s(cls, sizeof(cls),  (info+i)->dev_class, 3);
 			printf("Device class:\t");
 			if ((cls[1] & 0x1f) > sizeof(major_classes) / sizeof(char *))
 				printf("Invalid");
@@ -1039,7 +1039,7 @@ static void cmd_spinq(int dev_id, int argc, char **argv)
 	}
 
 	memset(&cp, 0, sizeof(cp));
-	memcpy(cp.lap, lap, 3);
+	memcpy_s(cp.lap, sizeof(cp.lap), lap, 3);
 	cp.max_period = htobs(16);
 	cp.min_period = htobs(10);
 	cp.length     = 8;
@@ -2396,7 +2396,7 @@ static void eir_parse_name(uint8_t *eir, size_t eir_len,
 			if (name_len > buf_len)
 				goto failed;
 
-			memcpy(buf, &eir[2], name_len);
+			memcpy_s(buf, buf_len, &eir[2], name_len);
 			return;
 		}
 

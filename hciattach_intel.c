@@ -39,7 +39,7 @@
 #include "lib/bluetooth.h"
 #include "lib/hci.h"
 #include "lib/hci_lib.h"
-
+#include <safe_lib.h>
 #include "hciattach.h"
 
 #ifdef INTEL_DEBUG
@@ -335,7 +335,7 @@ static int pre_patch(struct patch_ctx *ctx)
 
 	memset(fw_ver, '\0', sizeof(fw_ver));
 	for (; i < INTEL_VER_PARAM_LEN; i++)
-		sprintf(&fw_ver[i*2], "%02x", entry.data[7+i]);
+		snprintf(&fw_ver[i*2], sizeof(fw_ver) - i*2, "%02x", entry.data[7+i]);
 
 	if (open_patch_file(ctx, fw_ver) < 0) {
 		ctx->patch_error = 1;

@@ -36,6 +36,7 @@ extern "C" {
 #include <endian.h>
 #include <byteswap.h>
 #include <netinet/in.h>
+#include <safe_lib.h>
 
 #ifndef AF_BLUETOOTH
 #define AF_BLUETOOTH	31
@@ -336,7 +337,7 @@ static inline int bacmp(const bdaddr_t *ba1, const bdaddr_t *ba2)
 }
 static inline void bacpy(bdaddr_t *dst, const bdaddr_t *src)
 {
-	memcpy(dst, src, sizeof(bdaddr_t));
+	memcpy_s(dst, sizeof(bdaddr_t), src, sizeof(bdaddr_t));
 }
 
 void baswap(bdaddr_t *dst, const bdaddr_t *src);
@@ -379,7 +380,7 @@ static inline void bswap_128(const void *src, void *dst)
 
 static inline void ntoh128(const uint128_t *src, uint128_t *dst)
 {
-	memcpy(dst, src, sizeof(uint128_t));
+	memcpy_s(dst, sizeof(uint128_t), src, sizeof(uint128_t));
 }
 
 static inline void btoh128(const uint128_t *src, uint128_t *dst)
@@ -407,7 +408,7 @@ static inline void ntoh128(const uint128_t *src, uint128_t *dst)
 
 static inline void btoh128(const uint128_t *src, uint128_t *dst)
 {
-	memcpy(dst, src, sizeof(uint128_t));
+	memcpy_s(dst, sizeof(uint128_t), src, sizeof(uint128_t));
 }
 
 #endif

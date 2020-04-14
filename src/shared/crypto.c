@@ -30,6 +30,7 @@
 #include <string.h>
 #include <sys/socket.h>
 
+#include <safe_lib.h>
 #include "src/shared/util.h"
 #include "src/shared/crypto.h"
 
@@ -104,8 +105,8 @@ static int ecb_aes_setup(void)
 
 	memset(&salg, 0, sizeof(salg));
 	salg.salg_family = AF_ALG;
-	strcpy((char *) salg.salg_type, "skcipher");
-	strcpy((char *) salg.salg_name, "ecb(aes)");
+	strcpy_s((char *) salg.salg_type, 14, "skcipher");
+	strcpy_s((char *) salg.salg_name, 64, "ecb(aes)");
 
 	if (bind(fd, (struct sockaddr *) &salg, sizeof(salg)) < 0) {
 		close(fd);
@@ -126,8 +127,8 @@ static int cmac_aes_setup(void)
 
 	memset(&salg, 0, sizeof(salg));
 	salg.salg_family = AF_ALG;
-	strcpy((char *) salg.salg_type, "hash");
-	strcpy((char *) salg.salg_name, "cmac(aes)");
+	strcpy_s((char *) salg.salg_type, 14, "hash");
+	strcpy_s((char *) salg.salg_name, 64, "cmac(aes)");
 
 	if (bind(fd, (struct sockaddr *) &salg, sizeof(salg)) < 0) {
 		close(fd);
@@ -236,7 +237,7 @@ static bool alg_encrypt(int fd, const void *inbuf, size_t inlen,
 	cmsg->cmsg_level = SOL_ALG;
 	cmsg->cmsg_type = ALG_SET_OP;
 	cmsg->cmsg_len = CMSG_LEN(sizeof(alg_op));
-	memcpy(CMSG_DATA(cmsg), &alg_op, sizeof(alg_op));
+	memcpy_s(CMSG_DATA(cmsg), sizeof(alg_op), &alg_op, sizeof(alg_op));
 
 	iov.iov_base = (void *) inbuf;
 	iov.iov_len = inlen;
@@ -278,7 +279,7 @@ bool bt_crypto_sign_att(struct bt_crypto *crypto, const uint8_t key[16],
 		return false;
 
 	memset(msg, 0, msg_len);
-	memcpy(msg, m, m_len);
+	memcpy_s(msg, msg_len, m, m_len);
 
 	/* Add sign_counter to the message */
 	put_le32(sign_cnt, msg + m_len);
@@ -319,7 +320,7 @@ bool bt_crypto_sign_att(struct bt_crypto *crypto, const uint8_t key[16],
 	 * 12 octets
 	 */
 	swap_buf(out, tmp, 16);
-	memcpy(signature, tmp + 4, 12);
+	memcpy_s(signature, 12, tmp + 4, 12);
 
 	return true;
 }
@@ -411,7 +412,7 @@ bool bt_crypto_ah(struct bt_crypto *crypto, const uint8_t k[16],
 		return false;
 
 	/* r' = padding || r */
-	memcpy(rp, r, 3);
+	memcpy_s(rp, sizeof(rp), r, 3);
 	memset(rp + 3, 0, 13);
 
 	/* e(k, r') */
@@ -419,7 +420,7 @@ bool bt_crypto_ah(struct bt_crypto *crypto, const uint8_t k[16],
 		return false;
 
 	/* ah(k, r) = e(k, r') mod 2^24 */
-	memcpy(hash, encrypted, 3);
+	memcpy_s(hash, 3, encrypted, 3);
 
 	return true;
 }
@@ -433,13 +434,13 @@ static inline void u128_xor(const uint8_t p[16], const uint8_t q[16],
 {
 	u128 pp, qq, rr;
 
-	memcpy(&pp, p, 16);
-	memcpy(&qq, q, 16);
+	memcpy_s(&pp, sizeof(pp), p, 16);
+	memcpy_s(&qq, sizeof(qq), q, 16);
 
 	rr.a = pp.a ^ qq.a;
 	rr.b = pp.b ^ qq.b;
 
-	memcpy(r, &rr, 16);
+	memcpy_s(r, 16, &rr, 16);
 }
 
 /*
@@ -505,12 +506,12 @@ bool bt_crypto_c1(struct bt_crypto *crypto, const uint8_t k[16],
 	/* p1 = pres || preq || _rat || _iat */
 	p1[0] = iat;
 	p1[1] = rat;
-	memcpy(p1 + 2, preq, 7);
-	memcpy(p1 + 9, pres, 7);
+	memcpy_s(p1 + 2, sizeof(p1) - 2, preq, 7);
+	memcpy_s(p1 + 9, sizeof(p1) - 9,  pres, 7);
 
 	/* p2 = padding || ia || ra */
-	memcpy(p2, ra, 6);
-	memcpy(p2 + 6, ia, 6);
+	memcpy_s(p2, sizeof(p2), ra, 6);
+	memcpy_s(p2 + 6, sizeof(p2) - 6, ia, 6);
 	memset(p2 + 12, 0, 4);
 
 	/* res = r XOR p1 */
@@ -562,8 +563,8 @@ bool bt_crypto_s1(struct bt_crypto *crypto, const uint8_t k[16],
 			const uint8_t r1[16], const uint8_t r2[16],
 			uint8_t res[16])
 {
-	memcpy(res, r2, 8);
-	memcpy(res + 8, r1, 8);
+	memcpy_s(res, 16, r2, 8);
+	memcpy_s(res + 8, 8, r1, 8);
 
 	return bt_crypto_e(crypto, k, res, res);
 }
@@ -612,8 +613,8 @@ bool bt_crypto_f4(struct bt_crypto *crypto, uint8_t u[32], uint8_t v[32],
 		return false;
 
 	m[0] = z;
-	memcpy(&m[1], v, 32);
-	memcpy(&m[33], u, 32);
+	memcpy_s(&m[1], sizeof(m) - 1, v, 32);
+	memcpy_s(&m[33], sizeof(m) - 33, u, 32);
 
 	return aes_cmac(crypto, x, m, sizeof(m), res);
 }
@@ -631,12 +632,12 @@ bool bt_crypto_f5(struct bt_crypto *crypto, uint8_t w[32], uint8_t n1[16],
 	if (!aes_cmac(crypto, salt, w, 32, t))
 		return false;
 
-	memcpy(&m[0], length, 2);
-	memcpy(&m[2], a2, 7);
-	memcpy(&m[9], a1, 7);
-	memcpy(&m[16], n2, 16);
-	memcpy(&m[32], n1, 16);
-	memcpy(&m[48], btle, 4);
+	memcpy_s(&m[0], sizeof(m), length, 2);
+	memcpy_s(&m[2], sizeof(m) - 2, a2, 7);
+	memcpy_s(&m[9], sizeof(m) - 9, a1, 7);
+	memcpy_s(&m[16], sizeof(m) - 16, n2, 16);
+	memcpy_s(&m[32], sizeof(m) - 32, n1, 16);
+	memcpy_s(&m[48], sizeof(m) - 48, btle, 4);
 
 	m[52] = 0; /* Counter */
 	if (!aes_cmac(crypto, t, m, sizeof(m), mackey))
@@ -652,12 +653,12 @@ bool bt_crypto_f6(struct bt_crypto *crypto, uint8_t w[16], uint8_t n1[16],
 {
 	uint8_t m[65];
 
-	memcpy(&m[0], a2, 7);
-	memcpy(&m[7], a1, 7);
-	memcpy(&m[14], io_cap, 3);
-	memcpy(&m[17], r, 16);
-	memcpy(&m[33], n2, 16);
-	memcpy(&m[49], n1, 16);
+	memcpy_s(&m[0], sizeof(m), a2, 7);
+	memcpy_s(&m[7], sizeof(m) - 7, a1, 7);
+	memcpy_s(&m[14], sizeof(m) - 14, io_cap, 3);
+	memcpy_s(&m[17], sizeof(m) - 17, r, 16);
+	memcpy_s(&m[33], sizeof(m) - 33, n2, 16);
+	memcpy_s(&m[49], sizeof(m) -49, n1, 16);
 
 	return aes_cmac(crypto, w, m, sizeof(m), res);
 }
@@ -667,9 +668,9 @@ bool bt_crypto_g2(struct bt_crypto *crypto, uint8_t u[32], uint8_t v[32],
 {
 	uint8_t m[80], tmp[16];
 
-	memcpy(&m[0], y, 16);
-	memcpy(&m[16], v, 32);
-	memcpy(&m[48], u, 32);
+	memcpy_s(&m[0], sizeof(m), y, 16);
+	memcpy_s(&m[16], sizeof(m) - 16, v, 32);
+	memcpy_s(&m[48], sizeof(m) - 48, u, 32);
 
 	if (!aes_cmac(crypto, x, m, sizeof(m), tmp))
 		return false;

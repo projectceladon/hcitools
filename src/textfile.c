@@ -65,7 +65,7 @@ static int create_dirs(const char *filename, const mode_t mode)
 			continue;
 		}
 
-		strncat(dir, prev + 1, next - prev);
+		strncat_s(dir, sizeof(dir), prev + 1, next - prev);
 		mkdir(dir, mode);
 
 		prev = next;
@@ -144,7 +144,7 @@ static inline int write_key_value(int fd, const char *key, const char *value)
 	if (!str)
 		return ENOMEM;
 
-	sprintf(str, "%s %s\n", key, value);
+	snprintf(str, size + 1, "%s %s\n", key, value);
 
 	if (write(fd, str, size) < 0)
 		err = -errno;
@@ -266,7 +266,7 @@ static int write_key(const char *pathname, const char *key, const char *value, i
 		goto unmap;
 	}
 
-	memcpy(str, end, len);
+	memcpy_s(str, len, end, len);
 
 	munmap(map, size);
 	if (ftruncate(fd, base) < 0) {
@@ -349,7 +349,7 @@ static char *read_key(const char *pathname, const char *key, int icase)
 	}
 
 	memset(str, 0, end - off - len);
-	strncpy(str, off + len + 1, end - off - len - 1);
+	strncpy_s(str, end - off -len, off + len + 1, end - off - len - 1);
 
 unmap:
 	munmap(map, size);
@@ -426,7 +426,7 @@ int textfile_foreach(const char *pathname, textfile_cb func, void *data)
 		}
 
 		memset(key, 0, len + 1);
-		memcpy(key, off, len);
+		memcpy_s(key, len + 1, off, len);
 
 		off = end + 1;
 
@@ -453,7 +453,7 @@ int textfile_foreach(const char *pathname, textfile_cb func, void *data)
 		}
 
 		memset(value, 0, len + 1);
-		memcpy(value, off, len);
+		memcpy_s(value, len + 1, off, len);
 
 		func(key, value, data);
 

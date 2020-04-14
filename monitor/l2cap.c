@@ -2145,7 +2145,7 @@ static void print_hex_field(const char *label, const uint8_t *data,
 	str[0] = '\0';
 
 	for (i = 0; i < len; i++)
-		sprintf(str + (i * 2), "%2.2x", data[i]);
+		snprintf(str + (i * 2), (len * 2 + 1) - (i * 2), "%2.2x", data[i]);
 
 	print_field("%s: %s", label, str);
 }
@@ -2165,7 +2165,8 @@ static void print_uuid(const char *label, const void *data, uint16_t size)
 		print_field("%s: %s (0x%8.8x)", label, str, get_le32(data));
 		break;
 	case 16:
-		sprintf(uuidstr, "%8.8x-%4.4x-%4.4x-%4.4x-%8.8x%4.4x",
+		snprintf(uuidstr, MAX_LEN_UUID_STR,
+			       	"%8.8x-%4.4x-%4.4x-%4.4x-%8.8x%4.4x",
 				get_le32(data + 12), get_le16(data + 10),
 				get_le16(data + 8), get_le16(data + 6),
 				get_le32(data + 2), get_le16(data + 0));
@@ -2875,7 +2876,7 @@ static void print_smp_key_dist(const char *label, uint8_t dist)
 	char str[27];
 
 	if (!(dist & 0x07)) {
-		strcpy(str, "<none> ");
+		strcpy_s(str, sizeof(str), "<none> ");
 	} else {
 		str[0] = '\0';
 		if (dist & 0x01)
@@ -3355,7 +3356,7 @@ void l2cap_packet(uint16_t index, bool in, uint16_t handle, uint8_t flags,
 			return;
 		}
 
-		memcpy(index_list[index][in].frag_buf, data, size);
+		memcpy_s(index_list[index][in].frag_buf, len, data, size);
 		index_list[index][in].frag_pos = size;
 		index_list[index][in].frag_len = len - size;
 		index_list[index][in].frag_cid = cid;
@@ -3375,8 +3376,9 @@ void l2cap_packet(uint16_t index, bool in, uint16_t handle, uint8_t flags,
 			return;
 		}
 
-		memcpy(index_list[index][in].frag_buf +
-				index_list[index][in].frag_pos, data, size);
+		memcpy_s(index_list[index][in].frag_buf +
+				index_list[index][in].frag_pos, index_list[index][in].frag_len, 
+				                                                   data, size);
 		index_list[index][in].frag_pos += size;
 		index_list[index][in].frag_len -= size;
 

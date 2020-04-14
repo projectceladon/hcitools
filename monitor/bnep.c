@@ -71,7 +71,7 @@ static bool get_macaddr(struct bnep_frame *bnep_frame, char *str)
 		if (!l2cap_frame_get_u8(frame, &addr[i]))
 			return false;
 
-	sprintf(str, "%02x:%02x:%02x:%02x:%02x:%02x",
+	snprintf(str, 20, "%02x:%02x:%02x:%02x:%02x:%02x",
 		addr[0], addr[1], addr[2], addr[3], addr[4], addr[5]);
 
 	return true;

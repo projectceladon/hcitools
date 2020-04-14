@@ -43,6 +43,8 @@
 #include <fcntl.h>
 #include <linux/filter.h>
 
+#include <safe_lib.h>
+
 #include "lib/bluetooth.h"
 #include "lib/hci.h"
 #include "lib/mgmt.h"
@@ -959,12 +961,12 @@ static void data_callback(int fd, uint32_t events, void *user_data)
 				continue;
 
 			if (cmsg->cmsg_type == SCM_TIMESTAMP) {
-				memcpy(&ctv, CMSG_DATA(cmsg), sizeof(ctv));
+				memcpy_s(&ctv, sizeof(ctv), CMSG_DATA(cmsg), sizeof(ctv));
 				tv = &ctv;
 			}
 
 			if (cmsg->cmsg_type == SCM_CREDENTIALS) {
-				memcpy(&ccred, CMSG_DATA(cmsg), sizeof(ccred));
+				memcpy_s(&ccred, sizeof(ctv), CMSG_DATA(cmsg), sizeof(ccred));
 				cred = &ccred;
 			}
 		}
@@ -1191,7 +1193,7 @@ void control_server(const char *path)
 
 	memset(&addr, 0, sizeof(addr));
 	addr.sun_family = AF_UNIX;
-	strncpy(addr.sun_path, path, len - 1);
+	strncpy_s(addr.sun_path, sizeof(addr.sun_path), path, len - 1);
 
 	if (bind(fd, (struct sockaddr *) &addr, sizeof(addr)) < 0) {
 		perror("Failed to bind server socket");

@@ -39,7 +39,7 @@ char *batocomp(const bdaddr_t *ba)
 	struct udev_list_entry *head, *entry;
 	char modalias[11], *comp = NULL;
 
-	sprintf(modalias, "OUI:%2.2X%2.2X%2.2X", ba->b[5], ba->b[4], ba->b[3]);
+	snprintf(modalias, sizeof(modalias), "OUI:%2.2X%2.2X%2.2X", ba->b[5], ba->b[4], ba->b[3]);
 
 	udev = udev_new();
 	if (!udev)

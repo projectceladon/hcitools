@@ -29,6 +29,7 @@
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <inttypes.h>
+#include <safe_lib.h>
 
 #include "src/shared/util.h"
 #include "display.h"
@@ -346,7 +347,7 @@ void ll_packet(uint16_t frequency, const void *data, uint8_t size, bool padded)
 		channel_color = COLOR_CYAN;
 	}
 
-	sprintf(access_str, "0x%8.8x", access_addr);
+	snprintf(access_str, sizeof(access_str), "0x%8.8x", access_addr);
 
 	print_indent(6, channel_color, channel_label, access_str, COLOR_OFF,
 		" (channel %d) len %d crc 0x%6.6x", channel, pdu_len, pdu_crc);
@@ -626,9 +627,9 @@ static void cis_req(const void *data, uint8_t size)
 	print_field("Master to Slave Maximum SDU: %u", cmd->m_sdu);
 	print_field("Slave to Master Maximum SDU: %u", cmd->s_sdu);
 
-	memcpy(&interval, cmd->m_interval, sizeof(cmd->m_interval));
+	memcpy_s(&interval, sizeof(interval), cmd->m_interval, sizeof(cmd->m_interval));
 	print_field("Master to Slave Interval: 0x%6.6x", le32_to_cpu(interval));
-	memcpy(&interval, cmd->s_interval, sizeof(cmd->s_interval));
+	memcpy_s(&interval, sizeof(interval), cmd->s_interval, sizeof(cmd->s_interval));
 	print_field("Slave to Master Interval: 0x%6.6x", le32_to_cpu(interval));
 
 	print_field("Master to Slave Maximum PDU: %u", cmd->m_pdu);
@@ -636,7 +637,7 @@ static void cis_req(const void *data, uint8_t size)
 
 	print_field("Burst Number: %u us", cmd->bn);
 
-	memcpy(&interval, cmd->sub_interval, sizeof(cmd->sub_interval));
+	memcpy_s(&interval, sizeof(interval), cmd->sub_interval, sizeof(cmd->sub_interval));
 	print_field("Sub-Interval: 0x%6.6x", le32_to_cpu(interval));
 
 	print_field("Master to Slave Flush Timeout: %u", cmd->m_ft);
@@ -644,9 +645,9 @@ static void cis_req(const void *data, uint8_t size)
 
 	print_field("ISO Interval: 0x%4.4x", le16_to_cpu(cmd->iso_interval));
 
-	memcpy(&interval, cmd->offset_min, sizeof(cmd->offset_min));
+	memcpy_s(&interval, sizeof(interval), cmd->offset_min, sizeof(cmd->offset_min));
 	print_field("CIS Offset Minimum: 0x%6.6x", le32_to_cpu(interval));
-	memcpy(&interval, cmd->offset_max, sizeof(cmd->offset_max));
+	memcpy_s(&interval, sizeof(interval), cmd->offset_max, sizeof(cmd->offset_max));
 	print_field("CIS Offset Maximum: 0x%6.6x", le32_to_cpu(interval));
 
 	print_field("Connection Event Count: %u", cmd->conn_event_count);
@@ -657,9 +658,9 @@ static void cis_rsp(const void *data, uint8_t size)
 	const struct bt_ll_cis_rsp *rsp = data;
 	uint32_t interval;
 
-	memcpy(&interval, rsp->offset_min, sizeof(rsp->offset_min));
+	memcpy_s(&interval, sizeof(interval), rsp->offset_min, sizeof(rsp->offset_min));
 	print_field("CIS Offset Minimum: 0x%6.6x", le32_to_cpu(interval));
-	memcpy(&interval, rsp->offset_max, sizeof(rsp->offset_max));
+	memcpy_s(&interval, sizeof(interval), rsp->offset_max, sizeof(rsp->offset_max));
 	print_field("CIS Offset Maximum: 0x%6.6x", le32_to_cpu(interval));
 
 	print_field("Connection Event Count: %u", rsp->conn_event_count);
@@ -671,13 +672,13 @@ static void cis_ind(const void *data, uint8_t size)
 	uint32_t interval;
 
 	print_field("CIS Access Address: 0x%4.4x", le32_to_cpu(ind->addr));
-	memcpy(&interval, ind->cis_offset, sizeof(ind->cis_offset));
+	memcpy_s(&interval, sizeof(interval), ind->cis_offset, sizeof(ind->cis_offset));
 	print_field("CIS Offset: 0x%6.6x", le32_to_cpu(interval));
 
-	memcpy(&interval, ind->cig_sync_delay, sizeof(ind->cig_sync_delay));
+	memcpy_s(&interval, sizeof(interval), ind->cig_sync_delay, sizeof(ind->cig_sync_delay));
 	print_field("CIG Synchronization Delay: 0x%6.6x",
 					le32_to_cpu(interval));
-	memcpy(&interval, ind->cis_sync_delay, sizeof(ind->cis_sync_delay));
+	memcpy_s(&interval, sizeof(interval), ind->cis_sync_delay, sizeof(ind->cis_sync_delay));
 	print_field("CIS Synchronization Delay: %u us",
 					le32_to_cpu(interval));
 	print_field("Connection Event Count: %u", ind->conn_event_count);
