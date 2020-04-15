@@ -21,6 +21,7 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
@@ -33,10 +34,11 @@
 #include <sys/param.h>
 #include <sys/ioctl.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
-#include <bluetooth/hci_lib.h>
+#include "lib/bluetooth.h"
+#include "lib/hci.h"
+#include "lib/hci_lib.h"
 
+#include <safe_lib.h>
 #include "hciattach.h"
 
 #define TRUE    1
@@ -197,8 +199,8 @@ static int write_ps_cmd(int fd, uint8_t opcode, uint32_t ps_param)
 			load_hci_ps_hdr(cmd, opcode, ps_list[i].len,
 							ps_list[i].id);
 
-			memcpy(&cmd[HCI_PS_CMD_HDR_LEN], ps_list[i].data,
-							ps_list[i].len);
+			memcpy_s(&cmd[HCI_PS_CMD_HDR_LEN], HCI_MAX_CMD_SIZE - HCI_PS_CMD_HDR_LEN,
+					ps_list[i].data, ps_list[i].len);
 
 			if (write_cmd(fd, cmd, ps_list[i].len +
 						HCI_PS_CMD_HDR_LEN) < 0)
@@ -334,12 +336,12 @@ static void update_tag_data(struct ps_cfg_entry *tag,
 
 	buf[2] = '\0';
 
-	strncpy(buf, &ptr[info->char_cnt], 2);
+	strncpy_s(buf, sizeof(buf), &ptr[info->char_cnt], 2);
 	tag->data[info->byte_count] = strtol(buf, NULL, 16);
 	info->char_cnt += 3;
 	info->byte_count++;
 
-	strncpy(buf, &ptr[info->char_cnt], 2);
+	strncpy_s(buf, sizeof(buf), &ptr[info->char_cnt], 2);
 	tag->data[info->byte_count] = strtol(buf, NULL, 16);
 	info->char_cnt += 3;
 	info->byte_count++;
@@ -499,7 +501,7 @@ static int set_patch_ram(int dev, char *patch_loc, int len)
 }
 
 #define PATCH_LOC_KEY    "DA:"
-#define PATCH_LOC_STRING_LEN    8
+#define PATCH_LOC_STRING_LEN    (8 + 237)
 static int ps_patch_download(int fd, FILE *stream)
 {
 	char byte[3];
@@ -514,8 +516,8 @@ static int ps_patch_download(int fd, FILE *stream)
 		if (strlen(ptr) <= 1)
 			continue;
 		else if (strstr(ptr, PATCH_LOC_KEY) == ptr) {
-			strncpy(patch_loc, &ptr[sizeof(PATCH_LOC_KEY) - 1],
-							PATCH_LOC_STRING_LEN);
+			strncpy_s(patch_loc, sizeof(patch_loc),
+			&ptr[sizeof(PATCH_LOC_KEY) - 1], PATCH_LOC_STRING_LEN);
 			if (set_patch_ram(fd, patch_loc, sizeof(patch_loc)) < 0)
 				return -1;
 		} else if (isxdigit(ptr[0]))
@@ -544,7 +546,7 @@ static int ps_patch_download(int fd, FILE *stream)
 		}
 
 		load_hci_ps_hdr(cmd, WRITE_PATCH, patch.len, patch_count);
-		memcpy(&cmd[HCI_PS_CMD_HDR_LEN], patch.data, patch.len);
+		memcpy_s(&cmd[HCI_PS_CMD_HDR_LEN], patch.len, patch.data, patch.len);
 
 		if (write_cmd(fd, cmd, patch.len + HCI_PS_CMD_HDR_LEN) < 0)
 			return -1;
@@ -840,17 +842,8 @@ static int ath_ps_download(int fd)
 		goto download_cmplete;
 	}
 
-	/*
-	 * It is not necessary that Patch file be available,
-	 * continue with PS Operations if patch file is not available.
-	 */
-	if (patch_file[0] == '\0')
-		err = 0;
-
 	stream = fopen(patch_file, "r");
-	if (!stream)
-		err = 0;
-	else {
+	if(stream) {
 		patch_count = ps_patch_download(fd, stream);
 		fclose(stream);
 

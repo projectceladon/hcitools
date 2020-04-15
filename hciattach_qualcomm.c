@@ -26,6 +26,7 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -36,15 +37,15 @@
 #include <syslog.h>
 #include <termios.h>
 #include <time.h>
+#include <poll.h>
 #include <sys/time.h>
-#include <sys/poll.h>
 #include <sys/param.h>
 #include <sys/ioctl.h>
 #include <sys/uio.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
-#include <bluetooth/hci_lib.h>
+#include "lib/bluetooth.h"
+#include "lib/hci.h"
+#include "lib/hci_lib.h"
 
 #include "hciattach.h"
 
@@ -134,7 +135,7 @@ static int qualcomm_load_firmware(int fd, const char *firmware, const char *bdad
 			bdaddr_t bdaddr;
 			if (bdaddr_s != NULL) {
 				str2ba(bdaddr_s, &bdaddr);
-				memcpy(&data[3], &bdaddr, sizeof(bdaddr_t));
+				memcpy_s(&data[3], sizeof(data) - 3, &bdaddr, sizeof(bdaddr_t));
 			}
 		}
 

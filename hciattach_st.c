@@ -35,7 +35,7 @@
 #include <dirent.h>
 #include <sys/param.h>
 
-#include <bluetooth/bluetooth.h>
+#include "lib/bluetooth.h"
 
 #include "hciattach.h"
 
@@ -54,7 +54,7 @@ static int do_command(int fd, uint8_t ogf, uint16_t ocf,
 	cp[3] = clen;
 
 	if (clen > 0)
-		memcpy(cp + 4, cparam, clen);
+		memcpy_s(cp + 4, sizeof(cp) - 4, cparam, clen);
 
 	if (debug) {
 		int i;
@@ -111,7 +111,7 @@ static int do_command(int fd, uint8_t ogf, uint16_t ocf,
 	if (!rparam || rlen < size)
 		return -ENXIO;
 
-	memcpy(rparam, rp + offset, size);
+	memcpy_s(rparam, rlen,  rp + offset, size);
 
 	return size;
 }
@@ -120,7 +120,7 @@ static int load_file(int dd, uint16_t version, const char *suffix)
 {
 	DIR *dir;
 	struct dirent *d;
-	char pathname[PATH_MAX], filename[NAME_MAX], prefix[20];
+	char pathname[PATH_MAX], filename[PATH_MAX + NAME_MAX + 1], prefix[20];
 	unsigned char cmd[256];
 	unsigned char buf[256];
 	uint8_t seqnum = 0;
@@ -131,10 +131,10 @@ static int load_file(int dd, uint16_t version, const char *suffix)
 	snprintf(prefix, sizeof(prefix), "STLC2500_R%d_%02d_",
 						version >> 8, version & 0xff);
 
-	strcpy(pathname, "/lib/firmware");
+	strcpy_s(pathname, PATH_MAX, "/lib/firmware");
 	dir = opendir(pathname);
 	if (!dir) {
-		strcpy(pathname, ".");
+		strcpy_s(pathname, PATH_MAX, ".");
 		dir = opendir(pathname);
 		if (!dir)
 			return -errno;

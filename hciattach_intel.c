@@ -25,6 +25,7 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -35,10 +36,10 @@
 #include <sys/ioctl.h>
 #include <time.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
-#include <bluetooth/hci_lib.h>
-
+#include "lib/bluetooth.h"
+#include "lib/hci.h"
+#include "lib/hci_lib.h"
+#include <safe_lib.h>
 #include "hciattach.h"
 
 #ifdef INTEL_DEBUG
@@ -334,7 +335,7 @@ static int pre_patch(struct patch_ctx *ctx)
 
 	memset(fw_ver, '\0', sizeof(fw_ver));
 	for (; i < INTEL_VER_PARAM_LEN; i++)
-		sprintf(&fw_ver[i*2], "%02x", entry.data[7+i]);
+		snprintf(&fw_ver[i*2], sizeof(fw_ver) - i*2, "%02x", entry.data[7+i]);
 
 	if (open_patch_file(ctx, fw_ver) < 0) {
 		ctx->patch_error = 1;

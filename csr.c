@@ -25,6 +25,7 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -34,10 +35,11 @@
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <safe_lib.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
-#include <bluetooth/hci_lib.h>
+#include "lib/bluetooth.h"
+#include "lib/hci.h"
+#include "lib/hci_lib.h"
 
 #include "csr.h"
 
@@ -567,7 +569,7 @@ char *csr_buildidtostr(uint16_t id)
 		if (csr_map[i].id == id)
 			return csr_map[i].str;
 
-	snprintf(str, 11, "Build %d", id);
+	snprintf(str, sizeof(str), "Build %d", id);
 	return str;
 }
 
@@ -2362,7 +2364,7 @@ int csr_write_varid_valueless(int dd, uint16_t seqnum, uint16_t varid)
 
 	memset(&cp, 0, sizeof(cp));
 	cp[0] = 0xc2;
-	memcpy(cp + 1, cmd, sizeof(cmd));
+	memcpy_s(cp + 1, sizeof(cp) - 1, cmd, sizeof(cmd));
 
 	switch (varid) {
 	case CSR_VARID_COLD_RESET:
@@ -2408,8 +2410,8 @@ int csr_write_varid_complex(int dd, uint16_t seqnum, uint16_t varid, uint8_t *va
 
 	memset(&cp, 0, sizeof(cp));
 	cp[0] = 0xc2;
-	memcpy(cp + 1, cmd, sizeof(cmd));
-	memcpy(cp + 11, value, length);
+	memcpy_s(cp + 1, sizeof(cp) - 1, cmd, sizeof(cmd));
+	memcpy_s(cp + 11, sizeof(cp) - 11, value, length);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_VENDOR_CMD;
@@ -2447,8 +2449,8 @@ int csr_read_varid_complex(int dd, uint16_t seqnum, uint16_t varid, uint8_t *val
 
 	memset(&cp, 0, sizeof(cp));
 	cp[0] = 0xc2;
-	memcpy(cp + 1, cmd, sizeof(cmd));
-	memcpy(cp + 11, value, length);
+	memcpy_s(cp + 1, sizeof(cp) - 1, cmd, sizeof(cmd));
+	memcpy_s(cp + 11, sizeof(cp) - 11, value, length);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_VENDOR_CMD;
@@ -2472,7 +2474,7 @@ int csr_read_varid_complex(int dd, uint16_t seqnum, uint16_t varid, uint8_t *val
 		return -1;
 	}
 
-	memcpy(value, rp + 11, length);
+	memcpy_s(value, length, rp + 11, length);
 
 	return 0;
 }
@@ -2488,7 +2490,7 @@ int csr_read_varid_uint16(int dd, uint16_t seqnum, uint16_t varid, uint16_t *val
 
 	memset(&cp, 0, sizeof(cp));
 	cp[0] = 0xc2;
-	memcpy(cp + 1, cmd, sizeof(cmd));
+	memcpy_s(cp + 1, sizeof(cp) - 1, cmd, sizeof(cmd));
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_VENDOR_CMD;
@@ -2528,7 +2530,7 @@ int csr_read_varid_uint32(int dd, uint16_t seqnum, uint16_t varid, uint32_t *val
 
 	memset(&cp, 0, sizeof(cp));
 	cp[0] = 0xc2;
-	memcpy(cp + 1, cmd, sizeof(cmd));
+	memcpy_s(cp + 1, sizeof(cp) - 1, cmd, sizeof(cmd));
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_VENDOR_CMD;
@@ -2570,7 +2572,7 @@ int csr_read_pskey_complex(int dd, uint16_t seqnum, uint16_t pskey, uint16_t sto
 
 	memset(&cp, 0, sizeof(cp));
 	cp[0] = 0xc2;
-	memcpy(cp + 1, cmd, sizeof(cmd));
+	memcpy_s(cp + 1, sizeof(cp) - 1, cmd, sizeof(cmd));
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_VENDOR_CMD;
@@ -2594,7 +2596,7 @@ int csr_read_pskey_complex(int dd, uint16_t seqnum, uint16_t pskey, uint16_t sto
 		return -1;
 	}
 
-	memcpy(value, rp + 17, length);
+	memcpy_s(value, length, rp + 17, length);
 
 	return 0;
 }
@@ -2612,9 +2614,9 @@ int csr_write_pskey_complex(int dd, uint16_t seqnum, uint16_t pskey, uint16_t st
 
 	memset(&cp, 0, sizeof(cp));
 	cp[0] = 0xc2;
-	memcpy(cp + 1, cmd, sizeof(cmd));
+	memcpy_s(cp + 1, sizeof(cp) - 1, cmd, sizeof(cmd));
 
-	memcpy(cp + 17, value, length);
+	memcpy_s(cp + 17, sizeof(cp) - 17, value, length);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_VENDOR_CMD;
@@ -2698,7 +2700,7 @@ int psr_put(uint16_t pskey, uint8_t *value, uint16_t size)
 			return -ENOMEM;
 		}
 
-		memcpy(item->value, value, size);
+		memcpy_s(item->value, size, value, size);
 		item->size = size;
 	} else {
 		item->value = NULL;
@@ -2728,7 +2730,7 @@ int psr_get(uint16_t *pskey, uint8_t *value, uint16_t *size)
 
 	if (item->value) {
 		if (value && item->size > 0)
-			memcpy(value, item->value, item->size);
+			memcpy_s(value, item->size, item->value, item->size);
 		free(item->value);
 		*size = item->size;
 	} else
@@ -2750,12 +2752,13 @@ static int parse_line(char *str)
 	char *off, *end;
 
 	pskey = strtol(str + 1, NULL, 16);
-	off = strstr(str, "=") + 1;
+	off = strstr(str, "=");
 	if (!off)
 		return -EIO;
 
-	while (length <= sizeof(array) - 2) {
+	off++;
 
+	while (length <= sizeof(array) - 2) {
 		value = strtol(off, &end, 16);
 		if (value == 0 && off == end)
 			break;
@@ -2812,7 +2815,7 @@ int psr_read(const char *filename)
 			break;
 
 		memset(str, 0, end - off + 1);
-		strncpy(str, off, end - off);
+		strncpy_s(str, end - off + 1, off, end - off);
 		if (*str == '&')
 			parse_line(str);
 
@@ -2841,7 +2844,7 @@ int psr_print(void)
 
 		str = csr_pskeytoval(pskey);
 		if (!strcasecmp(str, "UNKNOWN")) {
-			sprintf(val, "0x%04x", pskey);
+			snprintf(val, sizeof(val), "0x%04x", pskey);
 			str = NULL;
 		}
 

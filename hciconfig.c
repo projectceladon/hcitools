@@ -27,6 +27,7 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <errno.h>
 #include <ctype.h>
@@ -37,14 +38,17 @@
 #include <sys/param.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
-#include <bluetooth/hci_lib.h>
+#include "lib/bluetooth.h"
+#include "lib/hci.h"
+#include "lib/hci_lib.h"
 
-#include "textfile.h"
+#include "src/textfile.h"
+#include "src/shared/util.h"
 #include "csr.h"
 
+#include <safe_lib.h>
 static struct hci_dev_info di;
 static int all;
 
@@ -67,6 +71,7 @@ static void print_dev_list(int ctl, int flags)
 
 	if (ioctl(ctl, HCIGETDEVLIST, (void *) dl) < 0) {
 		perror("Can't get device list");
+		free(dl);
 		exit(1);
 	}
 
@@ -74,14 +79,9 @@ static void print_dev_list(int ctl, int flags)
 		di.dev_id = (dr+i)->dev_id;
 		if (ioctl(ctl, HCIGETDEVINFO, (void *) &di) < 0)
 			continue;
-		if (hci_test_bit(HCI_RAW, &di.flags) &&
-				!bacmp(&di.bdaddr, BDADDR_ANY)) {
-			int dd = hci_open_dev(di.dev_id);
-			hci_read_bd_addr(dd, &di.bdaddr, 1000);
-			hci_close_dev(dd);
-		}
 		print_dev_info(ctl, &di);
 	}
+
 	free(dl);
 }
 
@@ -647,6 +647,9 @@ static void cmd_features(int ctl, int hdev, char *opt)
 		exit(1);
 	}
 
+	if (max_page < 1 && (features[6] & LMP_SIMPLE_PAIR))
+		max_page = 1;
+
 	print_dev_hdr(&di);
 	printf("\tFeatures%s: 0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x "
 				"0x%2.2x 0x%2.2x 0x%2.2x 0x%2.2x\n",
@@ -829,13 +832,14 @@ static char *get_minor_device_name(int major, int minor)
 
 		switch (minor & 48) {
 		case 16:
-			strncpy(cls_str, "Keyboard", sizeof(cls_str));
+			strncpy_s(cls_str, sizeof(cls_str),"Keyboard", sizeof(cls_str));
 			break;
 		case 32:
-			strncpy(cls_str, "Pointing device", sizeof(cls_str));
+			strncpy_s(cls_str, sizeof(cls_str), "Pointing device", sizeof(cls_str));
 			break;
 		case 48:
-			strncpy(cls_str, "Combo keyboard/pointing device", sizeof(cls_str));
+			strncpy_s(cls_str, sizeof(cls_str), "Combo keyboard/pointing device",
+					                                  sizeof(cls_str));
 			break;
 		}
 		if ((minor & 15) && (strlen(cls_str) > 0))
@@ -845,30 +849,38 @@ static char *get_minor_device_name(int major, int minor)
 		case 0:
 			break;
 		case 1:
-			strncat(cls_str, "Joystick", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "Joystick",
+					             sizeof(cls_str) - strlen(cls_str));
 			break;
 		case 2:
-			strncat(cls_str, "Gamepad", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "Gamepad",
+					              sizeof(cls_str) - strlen(cls_str));
 			break;
 		case 3:
-			strncat(cls_str, "Remote control", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "Remote control",
+					              sizeof(cls_str) - strlen(cls_str));
 			break;
 		case 4:
-			strncat(cls_str, "Sensing device", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "Sensing device",
+					              sizeof(cls_str) - strlen(cls_str));
 			break;
 		case 5:
-			strncat(cls_str, "Digitizer tablet", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "Digitizer tablet",
+					               sizeof(cls_str) - strlen(cls_str));
 			break;
 		case 6:
-			strncat(cls_str, "Card reader", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "Card reader",
+					               sizeof(cls_str) - strlen(cls_str));
 			break;
 		default:
-			strncat(cls_str, "(reserved)", sizeof(cls_str) - strlen(cls_str));
+			strncat_s(cls_str, sizeof(cls_str), "(reserved)",
+					               sizeof(cls_str) - strlen(cls_str));
 			break;
 		}
 		cls_str[47] = '\0';
 		if (strlen(cls_str) > 0)
 			return cls_str;
+		break;
 	}
 	case 6:	/* imaging */
 		if (minor & 4)
@@ -975,6 +987,7 @@ static void cmd_class(int ctl, int hdev, char *opt)
 			printf("%s, %s\n", major_devices[cls[1] & 0x1f],
 				get_minor_device_name(cls[1] & 0x1f, cls[0] >> 2));
 	}
+
 	hci_close_dev(s);
 }
 
@@ -1036,6 +1049,7 @@ static void cmd_voice(int ctl, int hdev, char *opt)
 		}
 		printf("\tAir Coding Format: %s\n", acf[vs & 0x03]);
 	}
+
 	hci_close_dev(s);
 }
 
@@ -1162,7 +1176,7 @@ static void cmd_version(int ctl, int hdev, char *opt)
 	}
 
 	hciver = hci_vertostr(ver.hci_ver);
-	if (((di.type & 0x30) >> 4) == HCI_BREDR)
+	if (((di.type & 0x30) >> 4) == HCI_PRIMARY)
 		lmpver = lmp_vertostr(ver.lmp_ver);
 	else
 		lmpver = pal_vertostr(ver.lmp_ver);
@@ -1172,7 +1186,7 @@ static void cmd_version(int ctl, int hdev, char *opt)
 		"\t%s Version: %s (0x%x)  Subversion: 0x%x\n"
 		"\tManufacturer: %s (%d)\n",
 		hciver ? hciver : "n/a", ver.hci_ver, ver.hci_rev,
-		(((di.type & 0x30) >> 4) == HCI_BREDR) ? "LMP" : "PAL",
+		(((di.type & 0x30) >> 4) == HCI_PRIMARY) ? "LMP" : "PAL",
 		lmpver ? lmpver : "n/a", ver.lmp_ver, ver.lmp_subver,
 		bt_compidtostr(ver.manufacturer), ver.manufacturer);
 
@@ -1292,7 +1306,7 @@ static void cmd_inq_data(int ctl, int hdev, char *opt)
 			size = HCI_MAX_EIR_LENGTH;
 
 		for (i = 0; i < size; i++) {
-			memcpy(tmp, opt + (i * 2), 2);
+			memcpy_s(tmp, 3,  opt + (i * 2), 2);
 			data[i] = strtol(tmp, NULL, 16);
 		}
 
@@ -1333,7 +1347,7 @@ static void cmd_inq_data(int ctl, int hdev, char *opt)
 				printf("\t%s service classes:",
 					type == 0x02 ? "Shortened" : "Complete");
 				for (i = 0; i < (len - 1) / 2; i++) {
-					uint16_t val = bt_get_le16((ptr + (i * 2)));
+					uint16_t val = get_le16((ptr + (i * 2)));
 					printf(" 0x%4.4x", val);
 				}
 				printf("\n");
@@ -1477,6 +1491,7 @@ static void cmd_inq_parms(int ctl, int hdev, char *opt)
 		printf("\tInquiry interval: %u slots (%.2f ms), window: %u slots (%.2f ms)\n",
 				interval, (float)interval * 0.625, window, (float)window * 0.625);
 	}
+
 	hci_close_dev(s);
 }
 
@@ -1549,6 +1564,7 @@ static void cmd_page_parms(int ctl, int hdev, char *opt)
 			interval, (float)interval * 0.625,
 			window, (float)window * 0.625);
 	}
+
 	hci_close_dev(s);
 }
 
@@ -1614,6 +1630,7 @@ static void cmd_page_to(int ctl, int hdev, char *opt)
 		printf("\tPage timeout: %u slots (%.2f ms)\n",
 				timeout, (float)timeout * 0.625);
 	}
+
 	hci_close_dev(s);
 }
 
@@ -1648,6 +1665,7 @@ static void cmd_afh_mode(int ctl, int hdev, char *opt)
 		print_dev_hdr(&di);
 		printf("\tAFH mode: %s\n", mode == 1 ? "Enabled" : "Disabled");
 	}
+
 	hci_close_dev(dd);
 }
 
@@ -1683,6 +1701,7 @@ static void cmd_ssp_mode(int ctl, int hdev, char *opt)
 		printf("\tSimple Pairing mode: %s\n",
 			mode == 1 ? "Enabled" : "Disabled");
 	}
+
 	hci_close_dev(dd);
 }
 
@@ -1811,7 +1830,9 @@ static void cmd_revision(int ctl, int hdev, char *opt)
 		printf("\tUnsupported manufacturer\n");
 		break;
 	}
+
 	hci_close_dev(dd);
+
 	return;
 }
 
@@ -1908,7 +1929,7 @@ static void print_dev_info(int ctl, struct hci_dev_info *di)
 	if (all && !hci_test_bit(HCI_RAW, &di->flags)) {
 		print_dev_features(di, 0);
 
-		if (((di->type & 0x30) >> 4) == HCI_BREDR) {
+		if (((di->type & 0x30) >> 4) == HCI_PRIMARY) {
 			print_pkt_type(di);
 			print_link_policy(di);
 			print_link_mode(di);
@@ -2038,13 +2059,6 @@ int main(int argc, char *argv[])
 	if (ioctl(ctl, HCIGETDEVINFO, (void *) &di)) {
 		perror("Can't get device info");
 		exit(1);
-	}
-
-	if (hci_test_bit(HCI_RAW, &di.flags) &&
-			!bacmp(&di.bdaddr, BDADDR_ANY)) {
-		int dd = hci_open_dev(di.dev_id);
-		hci_read_bd_addr(dd, &di.bdaddr, 1000);
-		hci_close_dev(dd);
 	}
 
 	while (argc > 0) {

@@ -27,16 +27,17 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <poll.h>
 
 #include <sys/param.h>
 #include <sys/uio.h>
-#include <sys/poll.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -149,7 +150,7 @@ char *hci_bustostr(int bus)
 {
 	switch (bus) {
 	case HCI_VIRTUAL:
-		return "VIRTUAL";
+		return "Virtual";
 	case HCI_USB:
 		return "USB";
 	case HCI_PCCARD:
@@ -162,8 +163,14 @@ char *hci_bustostr(int bus)
 		return "PCI";
 	case HCI_SDIO:
 		return "SDIO";
+	case HCI_SPI:
+		return "SPI";
+	case HCI_I2C:
+		return "I2C";
+	case HCI_SMD:
+		return "SMD";
 	default:
-		return "UNKNOWN";
+		return "Unknown";
 	}
 }
 
@@ -175,12 +182,12 @@ char *hci_dtypetostr(int type)
 char *hci_typetostr(int type)
 {
 	switch (type) {
-	case HCI_BREDR:
-		return "BR/EDR";
+	case HCI_PRIMARY:
+		return "Primary";
 	case HCI_AMP:
 		return "AMP";
 	default:
-		return "UNKNOWN";
+		return "Unknown";
 	}
 }
 
@@ -311,11 +318,12 @@ char *hci_lmtostr(unsigned int lm)
 {
 	char *s, *str;
 	char ptr[] = "SLAVE ";
+	int str_len = 0;
 	s = hci_bit2str(link_mode_map, lm);
 	if (!s)
 		return NULL;
-
-	str = malloc(strlen(ptr) + strlen(s) + 1);
+        str_len = strlen(ptr) + strlen(s) + 1;
+	str = malloc(str_len);
 	if (!str) {
 		free(s);
 		return NULL;
@@ -323,9 +331,9 @@ char *hci_lmtostr(unsigned int lm)
 
 	*str = 0;
 	if (!(lm & HCI_LM_MASTER))
-		strcpy(str, ptr);
+		strcpy_s(str, str_len, ptr);
 
-	strncat(str, s, strlen(s));
+	strncat_s(str, str_len, s, strlen(s));
 	str[strlen(ptr) + strlen(s)] = '\0';
 	free(s);
 	return str;
@@ -658,6 +666,10 @@ static hci_map ver_map[] = {
 	{ "2.1",	0x04 },
 	{ "3.0",	0x05 },
 	{ "4.0",	0x06 },
+	{ "4.1",	0x07 },
+	{ "4.2",	0x08 },
+	{ "5.0",	0x09 },
+	{ "5.1",	0x0a },
 	{ NULL }
 };
 
@@ -841,7 +853,7 @@ int hci_for_each_dev(int flag, int (*func)(int dd, int dev_id, long arg),
 	int dev_id = -1;
 	int i, sk, err = 0;
 
-	sk = socket(AF_BLUETOOTH, SOCK_RAW | O_CLOEXEC, BTPROTO_HCI);
+	sk = socket(AF_BLUETOOTH, SOCK_RAW | SOCK_CLOEXEC, BTPROTO_HCI);
 	if (sk < 0)
 		return -1;
 
@@ -907,8 +919,15 @@ static int __same_bdaddr(int dd, int dev_id, long arg)
 
 int hci_get_route(bdaddr_t *bdaddr)
 {
-	return hci_for_each_dev(HCI_UP, __other_bdaddr,
+	int dev_id;
+
+	dev_id = hci_for_each_dev(HCI_UP, __other_bdaddr,
 				(long) (bdaddr ? bdaddr : BDADDR_ANY));
+	if (dev_id < 0)
+		dev_id = hci_for_each_dev(HCI_UP, __same_bdaddr,
+				(long) (bdaddr ? bdaddr : BDADDR_ANY));
+
+	return dev_id;
 }
 
 int hci_devid(const char *str)
@@ -933,7 +952,7 @@ int hci_devinfo(int dev_id, struct hci_dev_info *di)
 {
 	int dd, err, ret;
 
-	dd = socket(AF_BLUETOOTH, SOCK_RAW | O_CLOEXEC, BTPROTO_HCI);
+	dd = socket(AF_BLUETOOTH, SOCK_RAW | SOCK_CLOEXEC, BTPROTO_HCI);
 	if (dd < 0)
 		return dd;
 
@@ -989,7 +1008,7 @@ int hci_inquiry(int dev_id, int len, int nrsp, const uint8_t *lap,
 		}
 	}
 
-	dd = socket(AF_BLUETOOTH, SOCK_RAW | O_CLOEXEC, BTPROTO_HCI);
+	dd = socket(AF_BLUETOOTH, SOCK_RAW | SOCK_CLOEXEC, BTPROTO_HCI);
 	if (dd < 0)
 		return dd;
 
@@ -1004,7 +1023,7 @@ int hci_inquiry(int dev_id, int len, int nrsp, const uint8_t *lap,
 	ir->flags   = flags;
 
 	if (lap) {
-		memcpy(ir->lap, lap, 3);
+		memcpy_s(ir->lap, 3, lap, 3);
 	} else {
 		ir->lap[0] = 0x33;
 		ir->lap[1] = 0x8b;
@@ -1021,7 +1040,7 @@ int hci_inquiry(int dev_id, int len, int nrsp, const uint8_t *lap,
 		*ii = malloc(size);
 
 	if (*ii) {
-		memcpy((void *) *ii, buf + sizeof(*ir), size);
+		memcpy_s((void *) *ii, size, buf + sizeof(*ir), size);
 		ret = ir->num_rsp;
 	} else
 		ret = -1;
@@ -1044,8 +1063,14 @@ int hci_open_dev(int dev_id)
 	struct sockaddr_hci a;
 	int dd, err;
 
+	/* Check for valid device id */
+	if (dev_id < 0) {
+		errno = ENODEV;
+		return -1;
+	}
+
 	/* Create HCI socket */
-	dd = socket(AF_BLUETOOTH, SOCK_RAW | O_CLOEXEC, BTPROTO_HCI);
+	dd = socket(AF_BLUETOOTH, SOCK_RAW | SOCK_CLOEXEC, BTPROTO_HCI);
 	if (dd < 0)
 		return dd;
 
@@ -1187,7 +1212,7 @@ int hci_send_req(int dd, struct hci_request *r, int to)
 			}
 
 			r->rlen = MIN(len, r->rlen);
-			memcpy(r->rparam, ptr, r->rlen);
+			memcpy_s(r->rparam, r->rlen, ptr, r->rlen);
 			goto done;
 
 		case EVT_CMD_COMPLETE:
@@ -1200,7 +1225,7 @@ int hci_send_req(int dd, struct hci_request *r, int to)
 			len -= EVT_CMD_COMPLETE_SIZE;
 
 			r->rlen = MIN(len, r->rlen);
-			memcpy(r->rparam, ptr, r->rlen);
+			memcpy_s(r->rparam, r->rlen, ptr, r->rlen);
 			goto done;
 
 		case EVT_REMOTE_NAME_REQ_COMPLETE:
@@ -1214,7 +1239,7 @@ int hci_send_req(int dd, struct hci_request *r, int to)
 				continue;
 
 			r->rlen = MIN(len, r->rlen);
-			memcpy(r->rparam, ptr, r->rlen);
+			memcpy_s(r->rparam, r->rlen, ptr, r->rlen);
 			goto done;
 
 		case EVT_LE_META_EVENT:
@@ -1225,7 +1250,7 @@ int hci_send_req(int dd, struct hci_request *r, int to)
 
 			len -= 1;
 			r->rlen = MIN(len, r->rlen);
-			memcpy(r->rparam, me->data, r->rlen);
+			memcpy_s(r->rparam, r->rlen, me->data, r->rlen);
 			goto done;
 
 		default:
@@ -1233,7 +1258,7 @@ int hci_send_req(int dd, struct hci_request *r, int to)
 				break;
 
 			r->rlen = MIN(len, r->rlen);
-			memcpy(r->rparam, ptr, r->rlen);
+			memcpy_s(r->rparam, r->rlen, ptr, r->rlen);
 			goto done;
 		}
 	}
@@ -1422,6 +1447,146 @@ int hci_le_clear_white_list(int dd, int to)
 	return 0;
 }
 
+int hci_le_add_resolving_list(int dd, const bdaddr_t *bdaddr, uint8_t type,
+				uint8_t *peer_irk, uint8_t *local_irk, int to)
+{
+	struct hci_request rq;
+	le_add_device_to_resolv_list_cp cp;
+	uint8_t status;
+
+	memset(&cp, 0, sizeof(cp));
+	cp.bdaddr_type = type;
+	bacpy(&cp.bdaddr, bdaddr);
+	if (peer_irk)
+		memcpy_s(cp.peer_irk, 16, peer_irk, 16);
+	if (local_irk)
+		memcpy_s(cp.local_irk, 16, local_irk, 16);
+
+	memset(&rq, 0, sizeof(rq));
+	rq.ogf = OGF_LE_CTL;
+	rq.ocf = OCF_LE_ADD_DEVICE_TO_RESOLV_LIST;
+	rq.cparam = &cp;
+	rq.clen = LE_ADD_DEVICE_TO_RESOLV_LIST_CP_SIZE;
+	rq.rparam = &status;
+	rq.rlen = 1;
+
+	if (hci_send_req(dd, &rq, to) < 0)
+		return -1;
+
+	if (status) {
+		errno = EIO;
+		return -1;
+	}
+
+	return 0;
+}
+
+int hci_le_rm_resolving_list(int dd, const bdaddr_t *bdaddr, uint8_t type, int to)
+{
+	struct hci_request rq;
+	le_remove_device_from_resolv_list_cp cp;
+	uint8_t status;
+
+	memset(&cp, 0, sizeof(cp));
+	cp.bdaddr_type = type;
+	bacpy(&cp.bdaddr, bdaddr);
+
+	memset(&rq, 0, sizeof(rq));
+	rq.ogf = OGF_LE_CTL;
+	rq.ocf = OCF_LE_REMOVE_DEVICE_FROM_RESOLV_LIST;
+	rq.cparam = &cp;
+	rq.clen = LE_REMOVE_DEVICE_FROM_RESOLV_LIST_CP_SIZE;
+	rq.rparam = &status;
+	rq.rlen = 1;
+
+	if (hci_send_req(dd, &rq, to) < 0)
+		return -1;
+
+	if (status) {
+		errno = EIO;
+		return -1;
+	}
+
+	return 0;
+}
+
+int hci_le_clear_resolving_list(int dd, int to)
+{
+	struct hci_request rq;
+	uint8_t status;
+
+	memset(&rq, 0, sizeof(rq));
+	rq.ogf = OGF_LE_CTL;
+	rq.ocf = OCF_LE_CLEAR_RESOLV_LIST;
+	rq.rparam = &status;
+	rq.rlen = 1;
+
+	if (hci_send_req(dd, &rq, to) < 0)
+		return -1;
+
+	if (status) {
+		errno = EIO;
+		return -1;
+	}
+
+	return 0;
+}
+
+int hci_le_read_resolving_list_size(int dd, uint8_t *size, int to)
+{
+	struct hci_request rq;
+	le_read_resolv_list_size_rp rp;
+
+	memset(&rp, 0, sizeof(rp));
+	memset(&rq, 0, sizeof(rq));
+
+	rq.ogf = OGF_LE_CTL;
+	rq.ocf = OCF_LE_READ_RESOLV_LIST_SIZE;
+	rq.rparam = &rp;
+	rq.rlen = LE_READ_RESOLV_LIST_SIZE_RP_SIZE;
+
+	if (hci_send_req(dd, &rq, to) < 0)
+		return -1;
+
+	if (rp.status) {
+		errno = EIO;
+		return -1;
+	}
+
+	if (size)
+		*size = rp.size;
+
+	return 0;
+}
+
+int hci_le_set_address_resolution_enable(int dd, uint8_t enable, int to)
+{
+	struct hci_request rq;
+	le_set_address_resolution_enable_cp cp;
+	uint8_t status;
+
+	memset(&cp, 0, sizeof(cp));
+	cp.enable = enable;
+
+	memset(&rq, 0, sizeof(rq));
+	rq.ogf = OGF_LE_CTL;
+	rq.ocf = OCF_LE_SET_ADDRESS_RESOLUTION_ENABLE;
+	rq.cparam = &cp;
+	rq.clen = LE_SET_ADDRESS_RESOLUTION_ENABLE_CP_SIZE;
+	rq.rparam = &status;
+	rq.rlen = 1;
+
+	if (hci_send_req(dd, &rq, to) < 0)
+		return -1;
+
+	if (status) {
+		errno = EIO;
+		return -1;
+	}
+
+	return 0;
+}
+
 int hci_read_local_name(int dd, int len, char *name, int to)
 {
 	read_local_name_rp rp;
@@ -1442,7 +1607,7 @@ int hci_read_local_name(int dd, int len, char *name, int to)
 	}
 
 	rp.name[247] = '\0';
-	strncpy(name, (char *) rp.name, len);
+	strncpy_s(name, len, (char *) rp.name, len);
 	return 0;
 }
 
@@ -1452,7 +1617,8 @@ int hci_write_local_name(int dd, const char *name, int to)
 	struct hci_request rq;
 
 	memset(&cp, 0, sizeof(cp));
-	strncpy((char *) cp.name, name, sizeof(cp.name));
+	strncpy_s((char *) cp.name, HCI_MAX_NAME_LENGTH,
+                                   name, sizeof(cp.name) - 1);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_HOST_CTL;
@@ -1498,7 +1664,7 @@ int hci_read_remote_name_with_clock_offset(int dd, const bdaddr_t *bdaddr,
 	}
 
 	rn.name[247] = '\0';
-	strncpy(name, (char *) rn.name, len);
+	strncpy_s(name, len, (char *) rn.name, len);
 	return 0;
 }
 
@@ -1589,7 +1755,7 @@ int hci_read_remote_features(int dd, uint16_t handle, uint8_t *features, int to)
 	}
 
 	if (features)
-		memcpy(features, rp.features, 8);
+		memcpy_s(features, 8, rp.features, 8);
 
 	return 0;
 }
@@ -1627,7 +1793,7 @@ int hci_read_remote_ext_features(int dd, uint16_t handle, uint8_t page,
 		*max_page = rp.max_page_num;
 
 	if (features)
-		memcpy(features, rp.features, 8);
+		memcpy_s(features, 8, rp.features, 8);
 
 	return 0;
 }
@@ -1709,7 +1875,7 @@ int hci_read_local_commands(int dd, uint8_t *commands, int to)
 	}
 
 	if (commands)
-		memcpy(commands, rp.commands, 64);
+		memcpy_s(commands, 64, rp.commands, 64);
 
 	return 0;
 }
@@ -1734,7 +1900,7 @@ int hci_read_local_features(int dd, uint8_t *features, int to)
 	}
 
 	if (features)
-		memcpy(features, rp.features, 8);
+		memcpy_s(features, 8,  rp.features, 8);
 
 	return 0;
 }
@@ -1768,7 +1934,7 @@ int hci_read_local_ext_features(int dd, uint8_t page, uint8_t *max_page,
 		*max_page = rp.max_page_num;
 
 	if (features)
-		memcpy(features, rp.features, 8);
+		memcpy_s(features, 8, rp.features, 8);
 
 	return 0;
 }
@@ -1817,7 +1983,7 @@ int hci_read_class_of_dev(int dd, uint8_t *cls, int to)
 		return -1;
 	}
 
-	memcpy(cls, rp.dev_class, 3);
+	memcpy_s(cls, 3, rp.dev_class, 3);
 	return 0;
 }
 
@@ -1895,7 +2061,7 @@ int hci_read_current_iac_lap(int dd, uint8_t *num_iac, uint8_t *lap, int to)
 	}
 
 	*num_iac = rp.num_current_iac;
-	memcpy(lap, rp.lap, rp.num_current_iac * 3);
+	memcpy_s(lap, 3 * MAX_IAC_LAP, rp.lap, rp.num_current_iac * 3);
 	return 0;
 }
 
@@ -1906,7 +2072,7 @@ int hci_write_current_iac_lap(int dd, uint8_t num_iac, uint8_t *lap, int to)
 
 	memset(&cp, 0, sizeof(cp));
 	cp.num_current_iac = num_iac;
-	memcpy(&cp.lap, lap, num_iac * 3);
+	memcpy_s(&cp.lap, 3 * MAX_IAC_LAP, lap, num_iac * 3);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_HOST_CTL;
@@ -1943,7 +2109,7 @@ int hci_write_stored_link_key(int dd, bdaddr_t *bdaddr, uint8_t *key, int to)
 	memset(&cp, 0, sizeof(cp));
 	cp[0] = 1;
 	bacpy((bdaddr_t *) (cp + 1), bdaddr);
-	memcpy(cp + 7, key, 16);
+	memcpy_s(cp + 7, sizeof(cp) -7, key, 16);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_HOST_CTL;
@@ -2315,7 +2481,7 @@ int hci_read_ext_inquiry_response(int dd, uint8_t *fec, uint8_t *data, int to)
 	}
 
 	*fec = rp.fec;
-	memcpy(data, rp.data, HCI_MAX_EIR_LENGTH);
+	memcpy_s(data, HCI_MAX_EIR_LENGTH, rp.data, HCI_MAX_EIR_LENGTH);
 
 	return 0;
 }
@@ -2328,7 +2494,7 @@ int hci_write_ext_inquiry_response(int dd, uint8_t fec, uint8_t *data, int to)
 
 	memset(&cp, 0, sizeof(cp));
 	cp.fec = fec;
-	memcpy(cp.data, data, HCI_MAX_EIR_LENGTH);
+	memcpy_s(cp.data, HCI_MAX_EIR_LENGTH, data, HCI_MAX_EIR_LENGTH);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_HOST_CTL;
@@ -2419,8 +2585,8 @@ int hci_read_local_oob_data(int dd, uint8_t *hash, uint8_t *randomizer, int to)
 		return -1;
 	}
 
-	memcpy(hash, rp.hash, 16);
-	memcpy(randomizer, rp.randomizer, 16);
+	memcpy_s(hash, 16, rp.hash, 16);
+	memcpy_s(randomizer, 16, rp.randomizer, 16);
 	return 0;
 }
 
@@ -2628,7 +2794,7 @@ int hci_set_afh_classification(int dd, uint8_t *map, int to)
 	struct hci_request rq;
 
 	memset(&cp, 0, sizeof(cp));
-	memcpy(cp.map, map, 10);
+	memcpy_s(cp.map, 10, map, 10);
 
 	memset(&rq, 0, sizeof(rq));
 	rq.ogf    = OGF_HOST_CTL;
@@ -2723,7 +2889,7 @@ int hci_read_afh_map(int dd, uint16_t handle, uint8_t *mode, uint8_t *map,
 	}
 
 	*mode = rp.mode;
-	memcpy(map, rp.map, 10);
+	memcpy_s(map, 10, rp.map, 10);
 	return 0;
 }
 
@@ -2932,6 +3098,38 @@ int hci_le_conn_update(int dd, uint16_t handle, uint16_t min_interval,
 		errno = EIO;
 		return -1;
 	}
+
+	return 0;
+}
+
+int hci_le_read_remote_features(int dd, uint16_t handle, uint8_t *features, int to)
+{
+	evt_le_read_remote_used_features_complete rp;
+	le_read_remote_used_features_cp cp;
+	struct hci_request rq;
+
+	memset(&cp, 0, sizeof(cp));
+	cp.handle = handle;
+
+	memset(&rq, 0, sizeof(rq));
+	rq.ogf    = OGF_LE_CTL;
+	rq.ocf    = OCF_LE_READ_REMOTE_USED_FEATURES;
+	rq.event  = EVT_LE_READ_REMOTE_USED_FEATURES_COMPLETE;
+	rq.cparam = &cp;
+	rq.clen   = LE_READ_REMOTE_USED_FEATURES_CP_SIZE;
+	rq.rparam = &rp;
+	rq.rlen   = EVT_LE_READ_REMOTE_USED_FEATURES_COMPLETE_SIZE;
+
+	if (hci_send_req(dd, &rq, to) < 0)
+		return -1;
+
+	if (rp.status) {
+		errno = EIO;
+		return -1;
+	}
+
+	if (features)
+		memcpy_s(features, 8, rp.features, 8);
 
 	return 0;
 }
