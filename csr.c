@@ -25,6 +25,7 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -35,9 +36,9 @@
 #include <sys/mman.h>
 #include <sys/socket.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
-#include <bluetooth/hci_lib.h>
+#include "lib/bluetooth.h"
+#include "lib/hci.h"
+#include "lib/hci_lib.h"
 
 #include "csr.h"
 
@@ -567,7 +568,7 @@ char *csr_buildidtostr(uint16_t id)
 		if (csr_map[i].id == id)
 			return csr_map[i].str;
 
-	snprintf(str, 11, "Build %d", id);
+	snprintf(str, sizeof(str), "Build %d", id);
 	return str;
 }
 
@@ -2750,12 +2751,13 @@ static int parse_line(char *str)
 	char *off, *end;
 
 	pskey = strtol(str + 1, NULL, 16);
-	off = strstr(str, "=") + 1;
+	off = strstr(str, "=");
 	if (!off)
 		return -EIO;
 
-	while (length <= sizeof(array) - 2) {
+	off++;
 
+	while (length <= sizeof(array) - 2) {
 		value = strtol(off, &end, 16);
 		if (value == 0 && off == end)
 			break;

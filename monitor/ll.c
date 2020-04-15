@@ -2,22 +2,22 @@
  *
  *  BlueZ - Bluetooth protocol stack for Linux
  *
- *  Copyright (C) 2011-2012  Intel Corporation
- *  Copyright (C) 2004-2010  Marcel Holtmann <marcel@holtmann.org>
+ *  Copyright (C) 2011-2014  Intel Corporation
+ *  Copyright (C) 2002-2010  Marcel Holtmann <marcel@holtmann.org>
  *
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ *  This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Lesser General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2.1 of the License, or (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
+ *  This library is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Lesser General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
+ *  You should have received a copy of the GNU Lesser General Public
+ *  License along with this library; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
@@ -26,10 +26,11 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
+#include <stdio.h>
 #include <inttypes.h>
 
-#include <bluetooth/bluetooth.h>
-
+#include "src/shared/util.h"
 #include "display.h"
 #include "packet.h"
 #include "crc.h"
@@ -38,6 +39,7 @@
 
 #define COLOR_OPCODE		COLOR_MAGENTA
 #define COLOR_OPCODE_UNKNOWN	COLOR_WHITE_BG
+#define COLOR_UNKNOWN_OPTIONS_BIT COLOR_WHITE_BG
 
 #define MAX_CHANNEL 16
 
@@ -245,7 +247,7 @@ static void advertising_packet(const void *data, uint8_t size)
 	}
 }
 
-static void data_packet(const void *data, uint8_t size)
+static void data_packet(const void *data, uint8_t size, bool padded)
 {
 	const uint8_t *ptr = data;
 	uint8_t llid, length;
@@ -290,7 +292,7 @@ static void data_packet(const void *data, uint8_t size)
 
 	switch (llid) {
 	case 0x03:
-		llcp_packet(data + 2, size - 2);
+		llcp_packet(data + 2, size - 2, padded);
 		break;
 
 	default:
@@ -299,7 +301,7 @@ static void data_packet(const void *data, uint8_t size)
 	}
 }
 
-void ll_packet(uint16_t frequency, const void *data, uint8_t size)
+void ll_packet(uint16_t frequency, const void *data, uint8_t size, bool padded)
 {
 	const struct bt_ll_hdr *hdr = data;
 	uint8_t channel = (frequency - 2402) / 2;
@@ -328,7 +330,7 @@ void ll_packet(uint16_t frequency, const void *data, uint8_t size)
 		return;
 	}
 
-	access_addr = btohl(hdr->access_addr);
+	access_addr = le32_to_cpu(hdr->access_addr);
 
 	pdu_data = data + sizeof(*hdr);
 	pdu_len = size - sizeof(*hdr) - 3;
@@ -368,7 +370,7 @@ void ll_packet(uint16_t frequency, const void *data, uint8_t size)
 	if (access_addr == 0x8e89bed6)
 		advertising_packet(pdu_data, pdu_len);
 	else
-		data_packet(pdu_data, pdu_len);
+		data_packet(pdu_data, pdu_len, padded);
 }
 
 static void null_pdu(const void *data, uint8_t size)
@@ -380,11 +382,11 @@ static void conn_update_req(const void *data, uint8_t size)
 	const struct bt_ll_conn_update_req *pdu = data;
 
 	print_field("Transmit window size: %u", pdu->win_size);
-	print_field("Transmit window offset: %u", btohs(pdu->win_offset));
-	print_field("Connection interval: %u", btohs(pdu->interval));
-	print_field("Connection slave latency: %u", btohs(pdu->latency));
-	print_field("Connection supervision timeout: %u", btohs(pdu->timeout));;
-	print_field("Connection instant: %u", btohs(pdu->instant));
+	print_field("Transmit window offset: %u", le16_to_cpu(pdu->win_offset));
+	print_field("Connection interval: %u", le16_to_cpu(pdu->interval));
+	print_field("Connection slave latency: %u", le16_to_cpu(pdu->latency));
+	print_field("Connection supervision timeout: %u", le16_to_cpu(pdu->timeout));
+	print_field("Connection instant: %u", le16_to_cpu(pdu->instant));
 }
 
 static void channel_map_req(const void *data, uint8_t size)
@@ -392,32 +394,32 @@ static void channel_map_req(const void *data, uint8_t size)
 	const struct bt_ll_channel_map_req *pdu = data;
 
 	packet_print_channel_map_ll(pdu->map);
-	print_field("Connection instant: %u", btohs(pdu->instant));
+	print_field("Connection instant: %u", le16_to_cpu(pdu->instant));
 }
 
 static void terminate_ind(const void *data, uint8_t size)
 {
 	const struct bt_ll_terminate_ind *pdu = data;
 
-	print_field("Error code: 0x%2.2x", pdu->error);
+	packet_print_error("Error code", pdu->error);
 }
 
 static void enc_req(const void *data, uint8_t size)
 {
 	const struct bt_ll_enc_req *pdu = data;
 
-	print_field("Rand: 0x%16.16" PRIx64, btohll(pdu->rand));
-	print_field("EDIV: 0x%4.4x", btohs(pdu->ediv));
-	print_field("SKD (master): 0x%16.16" PRIx64, btohll(pdu->skd));
-	print_field("IV (master): 0x%8.8x", btohl(pdu->iv));
+	print_field("Rand: 0x%16.16" PRIx64, le64_to_cpu(pdu->rand));
+	print_field("EDIV: 0x%4.4x", le16_to_cpu(pdu->ediv));
+	print_field("SKD (master): 0x%16.16" PRIx64, le64_to_cpu(pdu->skd));
+	print_field("IV (master): 0x%8.8x", le32_to_cpu(pdu->iv));
 }
 
 static void enc_rsp(const void *data, uint8_t size)
 {
 	const struct bt_ll_enc_rsp *pdu = data;
 
-	print_field("SKD (slave): 0x%16.16" PRIx64, btohll(pdu->skd));
-	print_field("IV (slave): 0x%8.8x", btohl(pdu->iv));
+	print_field("SKD (slave): 0x%16.16" PRIx64, le64_to_cpu(pdu->skd));
+	print_field("IV (slave): 0x%8.8x", le32_to_cpu(pdu->iv));
 }
 
 static const char *opcode_to_string(uint8_t opcode);
@@ -449,15 +451,245 @@ static void version_ind(const void *data, uint8_t size)
 	const struct bt_ll_version_ind *pdu = data;
 
 	packet_print_version("Version", pdu->version,
-				"Subversion", btohs(pdu->subversion));
-	packet_print_company("Company", btohs(pdu->company));
+				"Subversion", le16_to_cpu(pdu->subversion));
+	packet_print_company("Company", le16_to_cpu(pdu->company));
 }
 
 static void reject_ind(const void *data, uint8_t size)
 {
 	const struct bt_ll_reject_ind *pdu = data;
 
-	print_field("Error code: 0x%2.2x", pdu->error);
+	packet_print_error("Error code", pdu->error);
+}
+
+static void slave_feature_req(const void *data, uint8_t size)
+{
+	const struct bt_ll_slave_feature_req *pdu = data;
+
+	packet_print_features_ll(pdu->features);
+}
+
+static void reject_ind_ext(const void *data, uint8_t size)
+{
+	const struct bt_ll_reject_ind_ext *pdu = data;
+
+	print_field("Reject opcode: %u (0x%2.2x)", pdu->opcode, pdu->opcode);
+	packet_print_error("Error code", pdu->error);
+}
+
+static void length_req_rsp(const void *data, uint8_t size)
+{
+	const struct bt_ll_length *pdu = data;
+
+	print_field("MaxRxOctets: %u", pdu->rx_len);
+	print_field("MaxRxTime: %u", pdu->rx_time);
+	print_field("MaxTxOctets: %u", pdu->tx_len);
+	print_field("MaxtxTime: %u", pdu->tx_time);
+}
+
+static const struct bitfield_data le_phys[] = {
+	{  0, "LE 1M"	},
+	{  1, "LE 2M"	},
+	{  2, "LE Coded"},
+	{ }
+};
+
+static void phy_req_rsp(const void *data, uint8_t size)
+{
+	const struct bt_ll_phy *pdu = data;
+	uint8_t mask;
+
+	print_field("RX PHYs: 0x%2.2x", pdu->rx_phys);
+
+	mask = print_bitfield(2, pdu->rx_phys, le_phys);
+	if (mask)
+		print_text(COLOR_UNKNOWN_OPTIONS_BIT, "  Reserved"
+							" (0x%2.2x)", mask);
+	print_field("TX PHYs: 0x%2.2x", pdu->tx_phys);
+
+	mask = print_bitfield(2, pdu->tx_phys, le_phys);
+	if (mask)
+		print_text(COLOR_UNKNOWN_OPTIONS_BIT, "  Reserved"
+							" (0x%2.2x)", mask);
+}
+
+static void phy_update_ind(const void *data, uint8_t size)
+{
+	const struct bt_ll_phy_update_ind *pdu = data;
+	uint8_t mask;
+
+	print_field("M_TO_S_PHY: 0x%2.2x", pdu->m_phy);
+
+	mask = print_bitfield(2, pdu->m_phy, le_phys);
+	if (mask)
+		print_text(COLOR_UNKNOWN_OPTIONS_BIT, "  Reserved"
+							" (0x%2.2x)", mask);
+
+	print_field("S_TO_M_PHY: 0x%2.2x", pdu->s_phy);
+
+	mask = print_bitfield(2, pdu->s_phy, le_phys);
+	if (mask)
+		print_text(COLOR_UNKNOWN_OPTIONS_BIT, "  Reserved"
+							" (0x%2.2x)", mask);
+
+	print_field("Instant: 0x%4.4x", pdu->instant);
+}
+
+static void min_used_channels(const void *data, uint8_t size)
+{
+	const struct bt_ll_min_used_channels *pdu = data;
+	uint8_t mask;
+
+	print_field("PHYS: 0x%2.2x", pdu->phys);
+
+	mask = print_bitfield(2, pdu->phys, le_phys);
+	if (mask)
+		print_text(COLOR_UNKNOWN_OPTIONS_BIT, "  Reserved"
+							" (0x%2.2x)", mask);
+
+	print_field("MinUsedChannels: 0x%2.2x", pdu->min_channels);
+}
+
+static void cte_req(const void *data, uint8_t size)
+{
+	const struct bt_ll_cte_req *pdu = data;
+
+	print_field("MinCTELenReq: 0x%2.2x", pdu->cte & 0xf8);
+	print_field("CTETypeReq: 0x%2.2x", pdu->cte & 0x03);
+
+	switch (pdu->cte & 0x03) {
+	case 0x00:
+		print_field("  AoA Constant Tone Extension");
+		break;
+	case 0x01:
+		print_field("  AoD Constant Tone Extension with 1 μs slots");
+		break;
+	case 0x02:
+		print_field("  AoD Constant Tone Extension with 2 μs slots");
+		break;
+	}
+}
+
+static void periodic_sync_ind(const void *data, uint8_t size)
+{
+	const struct bt_ll_periodic_sync_ind *pdu = data;
+	uint8_t mask;
+
+	print_field("ID: 0x%4.4x", pdu->id);
+	print_field("SyncInfo:");
+	packet_hexdump(pdu->info, sizeof(pdu->info));
+	print_field("connEventCount: 0x%4.4x", pdu->event_count);
+	print_field("lastPaEventCounter: 0x%4.4x", pdu->last_counter);
+	print_field("SID: 0x%2.2x", pdu->adv_info & 0xf0);
+	print_field("AType: %s", pdu->adv_info & 0x08 ? "random" : "public");
+	print_field("SCA: 0x%2.2x", pdu->adv_info & 0x07);
+	print_field("PHY: 0x%2.2x", pdu->phy);
+
+	mask = print_bitfield(2, pdu->phy, le_phys);
+	if (mask)
+		print_text(COLOR_UNKNOWN_OPTIONS_BIT, "  Reserved"
+							" (0x%2.2x)", mask);
+
+	packet_print_addr("AdvA", pdu->adv_addr, pdu->adv_info & 0x08);
+	print_field("syncConnEventCount: 0x%4.4x", pdu->sync_counter);
+}
+
+static void clock_acc_req_rsp(const void *data, uint8_t size)
+{
+	const struct bt_ll_clock_acc *pdu = data;
+
+	print_field("SCA: 0x%2.2x", pdu->sca);
+}
+
+static void cis_req(const void *data, uint8_t size)
+{
+	const struct bt_ll_cis_req *cmd = data;
+	uint32_t interval;
+	uint8_t mask;
+
+	print_field("CIG ID: 0x%2.2x", cmd->cig);
+	print_field("CIS ID: 0x%2.2x", cmd->cis);
+	print_field("Master to Slave PHY: 0x%2.2x", cmd->m_phy);
+
+	mask = print_bitfield(2, cmd->m_phy, le_phys);
+	if (mask)
+		print_text(COLOR_UNKNOWN_OPTIONS_BIT, "  Reserved"
+							" (0x%2.2x)", mask);
+
+	print_field("Slave To Master PHY: 0x%2.2x", cmd->s_phy);
+
+	mask = print_bitfield(2, cmd->s_phy, le_phys);
+	if (mask)
+		print_text(COLOR_UNKNOWN_OPTIONS_BIT, "  Reserved"
+							" (0x%2.2x)", mask);
+
+	print_field("Master to Slave Maximum SDU: %u", cmd->m_sdu);
+	print_field("Slave to Master Maximum SDU: %u", cmd->s_sdu);
+
+	memcpy(&interval, cmd->m_interval, sizeof(cmd->m_interval));
+	print_field("Master to Slave Interval: 0x%6.6x", le32_to_cpu(interval));
+	memcpy(&interval, cmd->s_interval, sizeof(cmd->s_interval));
+	print_field("Slave to Master Interval: 0x%6.6x", le32_to_cpu(interval));
+
+	print_field("Master to Slave Maximum PDU: %u", cmd->m_pdu);
+	print_field("Slave to Master Maximum PDU: %u", cmd->s_pdu);
+
+	print_field("Burst Number: %u us", cmd->bn);
+
+	memcpy(&interval, cmd->sub_interval, sizeof(cmd->sub_interval));
+	print_field("Sub-Interval: 0x%6.6x", le32_to_cpu(interval));
+
+	print_field("Master to Slave Flush Timeout: %u", cmd->m_ft);
+	print_field("Slave to Master Flush Timeout: %u", cmd->s_ft);
+
+	print_field("ISO Interval: 0x%4.4x", le16_to_cpu(cmd->iso_interval));
+
+	memcpy(&interval, cmd->offset_min, sizeof(cmd->offset_min));
+	print_field("CIS Offset Minimum: 0x%6.6x", le32_to_cpu(interval));
+	memcpy(&interval, cmd->offset_max, sizeof(cmd->offset_max));
+	print_field("CIS Offset Maximum: 0x%6.6x", le32_to_cpu(interval));
+
+	print_field("Connection Event Count: %u", cmd->conn_event_count);
+}
+
+static void cis_rsp(const void *data, uint8_t size)
+{
+	const struct bt_ll_cis_rsp *rsp = data;
+	uint32_t interval;
+
+	memcpy(&interval, rsp->offset_min, sizeof(rsp->offset_min));
+	print_field("CIS Offset Minimum: 0x%6.6x", le32_to_cpu(interval));
+	memcpy(&interval, rsp->offset_max, sizeof(rsp->offset_max));
+	print_field("CIS Offset Maximum: 0x%6.6x", le32_to_cpu(interval));
+
+	print_field("Connection Event Count: %u", rsp->conn_event_count);
+}
+
+static void cis_ind(const void *data, uint8_t size)
+{
+	const struct bt_ll_cis_ind *ind = data;
+	uint32_t interval;
+
+	print_field("CIS Access Address: 0x%4.4x", le32_to_cpu(ind->addr));
+	memcpy(&interval, ind->cis_offset, sizeof(ind->cis_offset));
+	print_field("CIS Offset: 0x%6.6x", le32_to_cpu(interval));
+
+	memcpy(&interval, ind->cig_sync_delay, sizeof(ind->cig_sync_delay));
+	print_field("CIG Synchronization Delay: 0x%6.6x",
+					le32_to_cpu(interval));
+	memcpy(&interval, ind->cis_sync_delay, sizeof(ind->cis_sync_delay));
+	print_field("CIS Synchronization Delay: %u us",
+					le32_to_cpu(interval));
+	print_field("Connection Event Count: %u", ind->conn_event_count);
+}
+
+static void cis_term_ind(const void *data, uint8_t size)
+{
+	const struct bt_ll_cis_term_ind *ind = data;
+
+	print_field("CIG ID: 0x%2.2x", ind->cig);
+	print_field("CIS ID: 0x%2.2x", ind->cis);
+	packet_print_error("Reason", ind->reason);
 }
 
 struct llcp_data {
@@ -469,20 +701,46 @@ struct llcp_data {
 };
 
 static const struct llcp_data llcp_table[] = {
-	{ 0x00, "LL_CONNECTION_UPDATE_REQ", conn_update_req, 11, true },
-	{ 0x01, "LL_CHANNEL_MAP_REQ",       channel_map_req,  7, true },
-	{ 0x02, "LL_TERMINATE_IND",         terminate_ind,    1, true },
-	{ 0x03, "LL_ENC_REQ",               enc_req,         22, true },
-	{ 0x04, "LL_ENC_RSP",               enc_rsp,         12, true },
-	{ 0x05, "LL_START_ENC_REQ",         null_pdu,         0, true },
-	{ 0x06, "LL_START_ENC_RSP",         null_pdu,         0, true },
-	{ 0x07, "LL_UNKNOWN_RSP",           unknown_rsp,      1, true },
-	{ 0x08, "LL_FEATURE_REQ",           feature_req,      8, true },
-	{ 0x09, "LL_FEATURE_RSP",           feature_rsp,      8, true },
-	{ 0x0a, "LL_PAUSE_ENC_REQ",         null_pdu,         0, true },
-	{ 0x0b, "LL_PAUSE_ENC_RSP",         null_pdu,         0, true },
-	{ 0x0c, "LL_VERSION_IND",           version_ind,      5, true },
-	{ 0x0d, "LL_REJECT_IND",            reject_ind,       1, true },
+	{ 0x00, "LL_CONNECTION_UPDATE_REQ", conn_update_req,   11, true },
+	{ 0x01, "LL_CHANNEL_MAP_REQ",       channel_map_req,    7, true },
+	{ 0x02, "LL_TERMINATE_IND",         terminate_ind,      1, true },
+	{ 0x03, "LL_ENC_REQ",               enc_req,           22, true },
+	{ 0x04, "LL_ENC_RSP",               enc_rsp,           12, true },
+	{ 0x05, "LL_START_ENC_REQ",         null_pdu,           0, true },
+	{ 0x06, "LL_START_ENC_RSP",         null_pdu,           0, true },
+	{ 0x07, "LL_UNKNOWN_RSP",           unknown_rsp,        1, true },
+	{ 0x08, "LL_FEATURE_REQ",           feature_req,        8, true },
+	{ 0x09, "LL_FEATURE_RSP",           feature_rsp,        8, true },
+	{ 0x0a, "LL_PAUSE_ENC_REQ",         null_pdu,           0, true },
+	{ 0x0b, "LL_PAUSE_ENC_RSP",         null_pdu,           0, true },
+	{ 0x0c, "LL_VERSION_IND",           version_ind,        5, true },
+	{ 0x0d, "LL_REJECT_IND",            reject_ind,         1, true },
+	{ 0x0e, "LL_SLAVE_FEATURE_REQ",     slave_feature_req,  8, true },
+	{ 0x0f, "LL_CONNECTION_PARAM_REQ",  NULL,              23, true },
+	{ 0x10, "LL_CONNECTION_PARAM_RSP",  NULL,              23, true },
+	{ 0x11, "LL_REJECT_IND_EXT",        reject_ind_ext,     2, true },
+	{ 0x12, "LL_PING_REQ",              null_pdu,           0, true },
+	{ 0x13, "LL_PING_RSP",              null_pdu,           0, true },
+	{ 0x14, "LL_LENGTH_REQ",            length_req_rsp,     8, true },
+	{ 0x15, "LL_LENGTH_RSP",            length_req_rsp,     8, true },
+	{ 0x16, "LL_PHY_REQ",               phy_req_rsp,        2, true },
+	{ 0x17, "LL_PHY_RSP",               phy_req_rsp,        2, true },
+	{ 0x18, "LL_PHY_UPDATE_IND",        phy_update_ind,     4, true },
+	{ 0x19, "LL_MIN_USED_CHANNELS_IND", min_used_channels,  2, true },
+	{ 0x1a, "LL_CTE_REQ",               cte_req,            1, true },
+	{ 0x1b, "LL_CTE_RSP",               null_pdu,           0, true },
+	{ 0x1c, "LL_PERIODIC_SYNC_IND",     periodic_sync_ind, 34, true },
+	{ 0x1d, "LL_CLOCK_ACCURACY_REQ",    clock_acc_req_rsp,  1, true },
+	{ 0x1e, "LL_CLOCK_ACCURACY_RSP",    clock_acc_req_rsp,  1, true },
+	{ BT_LL_CIS_REQ, "LL_CIS_REQ",      cis_req,
+					sizeof(struct bt_ll_cis_req), true },
+	{ BT_LL_CIS_RSP, "LL_CIS_RSP",      cis_rsp,
+					sizeof(struct bt_ll_cis_rsp), true },
+	{ BT_LL_CIS_IND, "LL_CIS_IND",      cis_ind,
+					sizeof(struct bt_ll_cis_ind), true },
+	{ BT_LL_CIS_TERMINATE_IND, "LL_CIS_TERMINATE_IND", cis_term_ind,
+					sizeof(struct bt_ll_cis_term_ind),
+					true },
 	{ }
 };
 
@@ -498,7 +756,7 @@ static const char *opcode_to_string(uint8_t opcode)
 	return "Unknown";
 }
 
-void llcp_packet(const void *data, uint8_t size)
+void llcp_packet(const void *data, uint8_t size, bool padded)
 {
 	uint8_t opcode = ((const uint8_t *) data)[0];
 	const struct llcp_data *llcp_data = NULL;
@@ -531,7 +789,7 @@ void llcp_packet(const void *data, uint8_t size)
 		return;
 	}
 
-	if (llcp_data->fixed) {
+	if (llcp_data->fixed && !padded) {
 		if (size - 1 != llcp_data->size) {
 			print_text(COLOR_ERROR, "invalid packet size");
 			packet_hexdump(data + 1, size - 1);

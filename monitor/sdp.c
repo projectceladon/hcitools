@@ -2,22 +2,22 @@
  *
  *  BlueZ - Bluetooth protocol stack for Linux
  *
- *  Copyright (C) 2011-2012  Intel Corporation
- *  Copyright (C) 2004-2010  Marcel Holtmann <marcel@holtmann.org>
+ *  Copyright (C) 2011-2014  Intel Corporation
+ *  Copyright (C) 2002-2010  Marcel Holtmann <marcel@holtmann.org>
  *
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ *  This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Lesser General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2.1 of the License, or (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
+ *  This library is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Lesser General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
+ *  You should have received a copy of the GNU Lesser General Public
+ *  License along with this library; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
@@ -26,27 +26,31 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <inttypes.h>
 
-#include <bluetooth/bluetooth.h>
+#include "lib/bluetooth.h"
+#include "lib/uuid.h"
+
+#include "src/shared/util.h"
 
 #include "bt.h"
 #include "packet.h"
 #include "display.h"
 #include "l2cap.h"
-#include "uuid.h"
 #include "sdp.h"
 
 #define MAX_TID 16
+#define MAX_CONT_SIZE 17
 
 struct tid_data {
 	bool inuse;
 	uint16_t tid;
 	uint16_t channel;
-	uint8_t cont[17];
+	uint8_t cont[MAX_CONT_SIZE];
 };
 
 static struct tid_data tid_list[MAX_TID];
@@ -89,14 +93,13 @@ static void print_uint(uint8_t indent, const uint8_t *data, uint32_t size)
 		print_field("%*c0x%2.2x", indent, ' ', data[0]);
 		break;
 	case 2:
-		print_field("%*c0x%4.4x", indent, ' ', bt_get_be16(data));
+		print_field("%*c0x%4.4x", indent, ' ', get_be16(data));
 		break;
 	case 4:
-		print_field("%*c0x%8.8x", indent, ' ', bt_get_be32(data));
+		print_field("%*c0x%8.8x", indent, ' ', get_be32(data));
 		break;
 	case 8:
-		print_field("%*c0x%16.16" PRIx64, indent, ' ',
-							bt_get_be64(data));
+		print_field("%*c0x%16.16" PRIx64, indent, ' ', get_be64(data));
 		break;
 	default:
 		packet_hexdump(data, size);
@@ -114,26 +117,26 @@ static void print_uuid(uint8_t indent, const uint8_t *data, uint32_t size)
 	switch (size) {
 	case 2:
 		print_field("%*c%s (0x%4.4x)", indent, ' ',
-			uuid16_to_str(bt_get_be16(data)), bt_get_be16(data));
+			bt_uuid16_to_str(get_be16(data)), get_be16(data));
 		break;
 	case 4:
 		print_field("%*c%s (0x%8.8x)", indent, ' ',
-			uuid32_to_str(bt_get_be32(data)), bt_get_be32(data));
+			bt_uuid32_to_str(get_be32(data)), get_be32(data));
 		break;
 	case 16:
 		/* BASE_UUID = 00000000-0000-1000-8000-00805F9B34FB */
 		print_field("%*c%8.8x-%4.4x-%4.4x-%4.4x-%4.4x%8.4x",
 				indent, ' ',
-				bt_get_be32(data), bt_get_be16(data + 4),
-				bt_get_be16(data + 6), bt_get_be16(data + 8),
-				bt_get_be16(data + 10), bt_get_be32(data + 12));
-		if (bt_get_be16(data + 4) == 0x0000 &&
-				bt_get_be16(data + 6) == 0x1000 &&
-				bt_get_be16(data + 8) == 0x8000 &&
-				bt_get_be16(data + 10) == 0x0080 &&
-				bt_get_be32(data + 12) == 0x5F9B34FB)
+				get_be32(data), get_be16(data + 4),
+				get_be16(data + 6), get_be16(data + 8),
+				get_be16(data + 10), get_be32(data + 12));
+		if (get_be16(data + 4) == 0x0000 &&
+				get_be16(data + 6) == 0x1000 &&
+				get_be16(data + 8) == 0x8000 &&
+				get_be16(data + 10) == 0x0080 &&
+				get_be32(data + 12) == 0x5F9B34FB)
 			print_field("%*c%s", indent, ' ',
-				uuid32_to_str(bt_get_be32(data)));
+				bt_uuid32_to_str(get_be32(data)));
 		break;
 	default:
 		packet_hexdump(data, size);
@@ -233,9 +236,9 @@ static uint32_t get_size(const uint8_t *data, uint32_t size)
 			case 8:
 				return data[1];
 			case 16:
-				return bt_get_be16(data + 1);
+				return get_be16(data + 1);
 			case 32:
-				return bt_get_be32(data + 1);
+				return get_be32(data + 1);
 			default:
 				return 0;
 			}
@@ -307,6 +310,11 @@ static void decode_data_elements(uint32_t position, uint8_t indent,
 		break;
 	}
 
+	if (elemlen > size) {
+		print_text(COLOR_ERROR, "invalid data element size");
+		return;
+	}
+
 	data += elemlen;
 	size -= elemlen;
 
@@ -319,9 +327,9 @@ static uint32_t get_bytes(const uint8_t *data, uint32_t size)
 	case 5:
 		return 2 + data[1];
 	case 6:
-		return 3 + bt_get_be16(data + 1);
+		return 3 + get_be16(data + 1);
 	case 7:
-		return 5 + bt_get_be32(data + 1);
+		return 5 + get_be32(data + 1);
 	}
 
 	return 0;
@@ -354,7 +362,7 @@ static void print_attr(uint32_t position, uint8_t indent, uint8_t type,
 	int i;
 
 	if ((position % 2) == 0) {
-		uint16_t id = bt_get_be16(data);
+		uint16_t id = get_be16(data);
 		const char *str = "Unknown";
 
 		for (i = 0; attribute_table[i].str; i++) {
@@ -409,6 +417,10 @@ static void print_continuation(const uint8_t *data, uint16_t size)
 static void store_continuation(struct tid_data *tid,
 					const uint8_t *data, uint16_t size)
 {
+	if (size > MAX_CONT_SIZE) {
+		print_text(COLOR_ERROR, "invalid continuation size");
+		return;
+	}
 	memcpy(tid->cont, data, size);
 	print_continuation(data, size);
 }
@@ -509,7 +521,7 @@ static uint16_t common_rsp(const struct l2cap_frame *frame,
 		return 0;
 	}
 
-	bytes = bt_get_be16(frame->data);
+	bytes = get_be16(frame->data);
 	print_field("Attribute bytes: %d", bytes);
 
 	if (bytes > frame->size - 2) {
@@ -519,6 +531,24 @@ static uint16_t common_rsp(const struct l2cap_frame *frame,
 	}
 
 	return bytes;
+}
+
+static const char *error_str(uint16_t code)
+{
+	switch (code) {
+	case 0x0001:
+		return "Invalid Version";
+	case 0x0002:
+		return "Invalid Record Handle";
+	case 0x0003:
+		return "Invalid Syntax";
+	case 0x0004:
+		return "Invalid PDU Size";
+	case 0x0005:
+		return "Invalid Continuation State";
+	default:
+		return "Unknown";
+	}
 }
 
 static void error_rsp(const struct l2cap_frame *frame, struct tid_data *tid)
@@ -533,9 +563,9 @@ static void error_rsp(const struct l2cap_frame *frame, struct tid_data *tid)
 		return;
 	}
 
-	error = bt_get_be16(frame->data);
+	error = get_be16(frame->data);
 
-	print_field("Error code: 0x%2.2x", error);
+	print_field("Error code: %s (0x%4.4x)", error_str(error), error);
 }
 
 static void service_req(const struct l2cap_frame *frame, struct tid_data *tid)
@@ -554,7 +584,7 @@ static void service_req(const struct l2cap_frame *frame, struct tid_data *tid)
 	decode_data_elements(0, 2, frame->data, search_bytes, NULL);
 
 	print_field("Max record count: %d",
-				bt_get_be16(frame->data + search_bytes));
+				get_be16(frame->data + search_bytes));
 
 	print_continuation(frame->data + search_bytes + 2,
 					frame->size - search_bytes - 2);
@@ -573,14 +603,18 @@ static void service_rsp(const struct l2cap_frame *frame, struct tid_data *tid)
 		return;
 	}
 
-	count = bt_get_be16(frame->data + 2);
+	count = get_be16(frame->data + 2);
+	if (count * 4 > frame->size) {
+		print_text(COLOR_ERROR, "invalid record count");
+                return;
+	}
 
-	print_field("Total record count: %d", bt_get_be16(frame->data));
+	print_field("Total record count: %d", get_be16(frame->data));
 	print_field("Current record count: %d", count);
 
 	for (i = 0; i < count; i++)
 		print_field("Record handle: 0x%4.4x",
-				bt_get_be32(frame->data + 4 + (i * 4)));
+				get_be32(frame->data + 4 + (i * 4)));
 
 	print_continuation(frame->data + 4 + (count * 4),
 					frame->size - 4 - (count * 4));
@@ -596,8 +630,8 @@ static void attr_req(const struct l2cap_frame *frame, struct tid_data *tid)
 		return;
 	}
 
-	print_field("Record handle: 0x%4.4x", bt_get_be32(frame->data));
-	print_field("Max attribute bytes: %d", bt_get_be16(frame->data + 4));
+	print_field("Record handle: 0x%4.4x", get_be32(frame->data));
+	print_field("Max attribute bytes: %d", get_be16(frame->data + 4));
 
 	attr_bytes = get_bytes(frame->data + 6, frame->size - 6);
 	print_field("Attribute list: [len %d]", attr_bytes);
@@ -643,11 +677,16 @@ static void search_attr_req(const struct l2cap_frame *frame,
 	decode_data_elements(0, 2, frame->data, search_bytes, NULL);
 
 	print_field("Max record count: %d",
-				bt_get_be16(frame->data + search_bytes));
+				get_be16(frame->data + search_bytes));
 
 	attr_bytes = get_bytes(frame->data + search_bytes + 2,
 				frame->size - search_bytes - 2);
 	print_field("Attribute list: [len %d]", attr_bytes);
+
+	if (search_bytes + attr_bytes > frame->size) {
+		print_text(COLOR_ERROR, "invalid attribute list length");
+		return;
+	}
 
 	decode_data_elements(0, 2, frame->data + search_bytes + 2,
 						attr_bytes, NULL);
@@ -685,7 +724,7 @@ static const struct sdp_data sdp_table[] = {
 	{ }
 };
 
-void sdp_packet(const struct l2cap_frame *frame, uint16_t channel)
+void sdp_packet(const struct l2cap_frame *frame)
 {
 	uint8_t pdu;
 	uint16_t tid, plen;
@@ -693,22 +732,21 @@ void sdp_packet(const struct l2cap_frame *frame, uint16_t channel)
 	struct tid_data *tid_info;
 	const struct sdp_data *sdp_data = NULL;
 	const char *pdu_color, *pdu_str;
-
 	int i;
 
-	if (frame->size < 5) {
+	l2cap_frame_pull(&sdp_frame, frame, 0);
+
+	if (!l2cap_frame_get_u8(&sdp_frame, &pdu) ||
+				!l2cap_frame_get_be16(&sdp_frame, &tid) ||
+				!l2cap_frame_get_be16(&sdp_frame, &plen)) {
 		print_text(COLOR_ERROR, "frame too short");
 		packet_hexdump(frame->data, frame->size);
 		return;
 	}
 
-	pdu = *((uint8_t *) frame->data);
-	tid = bt_get_be16(frame->data + 1);
-	plen = bt_get_be16(frame->data + 3);
-
-	if (frame->size != plen + 5) {
+	if (sdp_frame.size != plen) {
 		print_text(COLOR_ERROR, "invalid frame size");
-		packet_hexdump(frame->data, frame->size);
+		packet_hexdump(sdp_frame.data, sdp_frame.size);
 		return;
 	}
 
@@ -736,13 +774,12 @@ void sdp_packet(const struct l2cap_frame *frame, uint16_t channel)
 	print_indent(6, pdu_color, "SDP: ", pdu_str, COLOR_OFF,
 				" (0x%2.2x) tid %d len %d", pdu, tid, plen);
 
-	if (!sdp_data || !sdp_data->func) {
-		packet_hexdump(frame->data + 5, frame->size - 5);
+	tid_info = get_tid(tid, frame->chan);
+
+	if (!sdp_data || !sdp_data->func || !tid_info) {
+		packet_hexdump(sdp_frame.data, sdp_frame.size);
 		return;
 	}
 
-	tid_info = get_tid(tid, channel);
-
-	l2cap_frame_pull(&sdp_frame, frame, 5);
 	sdp_data->func(&sdp_frame, tid_info);
 }

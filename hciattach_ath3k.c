@@ -21,6 +21,7 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
@@ -33,9 +34,9 @@
 #include <sys/param.h>
 #include <sys/ioctl.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
-#include <bluetooth/hci_lib.h>
+#include "lib/bluetooth.h"
+#include "lib/hci.h"
+#include "lib/hci_lib.h"
 
 #include "hciattach.h"
 
@@ -499,7 +500,7 @@ static int set_patch_ram(int dev, char *patch_loc, int len)
 }
 
 #define PATCH_LOC_KEY    "DA:"
-#define PATCH_LOC_STRING_LEN    8
+#define PATCH_LOC_STRING_LEN    (8 + 237)
 static int ps_patch_download(int fd, FILE *stream)
 {
 	char byte[3];
@@ -840,17 +841,8 @@ static int ath_ps_download(int fd)
 		goto download_cmplete;
 	}
 
-	/*
-	 * It is not necessary that Patch file be available,
-	 * continue with PS Operations if patch file is not available.
-	 */
-	if (patch_file[0] == '\0')
-		err = 0;
-
 	stream = fopen(patch_file, "r");
-	if (!stream)
-		err = 0;
-	else {
+	if(stream) {
 		patch_count = ps_patch_download(fd, stream);
 		fclose(stream);
 

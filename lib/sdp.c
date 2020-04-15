@@ -67,6 +67,9 @@ static uint128_t bluetooth_base_uuid = {
 
 #define SDP_MAX_ATTR_LEN 65535
 
+/* match MTU used by RFCOMM */
+#define SDP_LARGE_L2CAP_MTU 1013
+
 static sdp_data_t *sdp_copy_seq(sdp_data_t *data);
 static int sdp_attr_add_new_with_length(sdp_record_t *rec,
 	uint16_t attr, uint8_t dtd, const void *value, uint32_t len);
@@ -178,8 +181,9 @@ static struct tupla ServiceClass[] = {
 	{ HDP_SVCLASS_ID,			"HDP"				},
 	{ HDP_SOURCE_SVCLASS_ID,		"HDP Source"			},
 	{ HDP_SINK_SVCLASS_ID,			"HDP Sink"			},
-	{ APPLE_AGENT_SVCLASS_ID,		"Apple Agent"			},
+	{ GENERIC_ACCESS_SVCLASS_ID,		"Generic Access"		},
 	{ GENERIC_ATTRIB_SVCLASS_ID,		"Generic Attribute"		},
+	{ APPLE_AGENT_SVCLASS_ID,		"Apple Agent"			},
 	{ 0 }
 };
 
@@ -930,8 +934,12 @@ int sdp_gen_record_pdu(const sdp_record_t *rec, sdp_buf_t *buf)
 
 void sdp_attr_replace(sdp_record_t *rec, uint16_t attr, sdp_data_t *d)
 {
-	sdp_data_t *p = sdp_data_get(rec, attr);
+	sdp_data_t *p;
 
+	if (!rec)
+		return;
+
+	p = sdp_data_get(rec, attr);
 	if (p) {
 		rec->attrlist = sdp_list_remove(rec->attrlist, p);
 		sdp_data_free(p);
@@ -1607,13 +1615,13 @@ void sdp_record_print(const sdp_record_t *rec)
 {
 	sdp_data_t *d = sdp_data_get(rec, SDP_ATTR_SVCNAME_PRIMARY);
 	if (d && SDP_IS_TEXT_STR(d->dtd))
-		printf("Service Name: %.*s", d->unitSize, d->val.str);
+		printf("Service Name: %.*s\n", d->unitSize, d->val.str);
 	d = sdp_data_get(rec, SDP_ATTR_SVCDESC_PRIMARY);
 	if (d && SDP_IS_TEXT_STR(d->dtd))
-		printf("Service Description: %.*s", d->unitSize, d->val.str);
+		printf("Service Description: %.*s\n", d->unitSize, d->val.str);
 	d = sdp_data_get(rec, SDP_ATTR_PROVNAME_PRIMARY);
 	if (d && SDP_IS_TEXT_STR(d->dtd))
-		printf("Service Provider: %.*s", d->unitSize, d->val.str);
+		printf("Service Provider: %.*s\n", d->unitSize, d->val.str);
 }
 
 #ifdef SDP_DEBUG
@@ -1669,7 +1677,7 @@ void sdp_data_print(sdp_data_t *d)
 
 sdp_data_t *sdp_data_get(const sdp_record_t *rec, uint16_t attrId)
 {
-	if (rec->attrlist) {
+	if (rec && rec->attrlist) {
 		sdp_data_t sdpTemplate;
 		sdp_list_t *p;
 
@@ -2843,6 +2851,12 @@ void sdp_append_to_buf(sdp_buf_t *dst, uint8_t *data, uint32_t len)
 	SDPDBG("Append src size: %d", len);
 	SDPDBG("Append dst size: %d", dst->data_size);
 	SDPDBG("Dst buffer size: %d", dst->buf_size);
+
+	if (dst->data_size + len > dst->buf_size) {
+		SDPERR("Cannot append");
+		return;
+	}
+
 	if (dst->data_size == 0 && dtd == 0) {
 		/* create initial sequence */
 		*p = SDP_SEQ8;
@@ -3884,7 +3898,7 @@ int sdp_service_search_async(sdp_session_t *session, const sdp_list_t *search, u
 	reqhdr->plen = htons((t->reqsize + cstate_len) - sizeof(sdp_pdu_hdr_t));
 
 	if (sdp_send_req(session, t->reqbuf, t->reqsize + cstate_len) < 0) {
-		SDPERR("Error sendind data:%m");
+		SDPERR("Error sending data:%m");
 		t->err = errno;
 		goto end;
 	}
@@ -3995,7 +4009,7 @@ int sdp_service_attr_async(sdp_session_t *session, uint32_t handle, sdp_attrreq_
 	reqhdr->plen = htons((t->reqsize + cstate_len) - sizeof(sdp_pdu_hdr_t));
 
 	if (sdp_send_req(session, t->reqbuf, t->reqsize + cstate_len) < 0) {
-		SDPERR("Error sendind data:%m");
+		SDPERR("Error sending data:%m");
 		t->err = errno;
 		goto end;
 	}
@@ -4111,7 +4125,7 @@ int sdp_service_search_attr_async(sdp_session_t *session, const sdp_list_t *sear
 	reqhdr->plen = htons((t->reqsize + cstate_len) - sizeof(sdp_pdu_hdr_t));
 
 	if (sdp_send_req(session, t->reqbuf, t->reqsize + cstate_len) < 0) {
-		SDPERR("Error sendind data:%m");
+		SDPERR("Error sending data:%m");
 		t->err = errno;
 		goto end;
 	}
@@ -4206,10 +4220,15 @@ int sdp_process(sdp_session_t *session)
 		goto end;
 	}
 
-	if (n == 0 || reqhdr->tid != rsphdr->tid ||
-		(n != (int) (ntohs(rsphdr->plen) + sizeof(sdp_pdu_hdr_t)))) {
+	if (reqhdr->tid != rsphdr->tid) {
 		t->err = EPROTO;
-		SDPERR("Protocol error.");
+		SDPERR("Protocol error: transaction id does not match");
+		goto end;
+	}
+
+	if (n != (int) (ntohs(rsphdr->plen) + sizeof(sdp_pdu_hdr_t))) {
+		t->err = EPROTO;
+		SDPERR("Protocol error: invalid length");
 		goto end;
 	}
 
@@ -4352,7 +4371,7 @@ int sdp_process(sdp_session_t *session)
 		reqhdr->plen = htons(reqsize - sizeof(sdp_pdu_hdr_t));
 
 		if (sdp_send_req(session, t->reqbuf, reqsize) < 0) {
-			SDPERR("Error sendind data:%m(%d)", errno);
+			SDPERR("Error sending data:%m(%d)", errno);
 			status = 0xffff;
 			t->err = errno;
 			goto end;
@@ -4664,7 +4683,7 @@ static int sdp_connect_local(sdp_session_t *session)
 {
 	struct sockaddr_un sa;
 
-	session->sock = socket(PF_UNIX, SOCK_STREAM | O_CLOEXEC, 0);
+	session->sock = socket(PF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
 	if (session->sock < 0)
 		return -1;
 	session->local = 1;
@@ -4675,16 +4694,36 @@ static int sdp_connect_local(sdp_session_t *session)
 	return connect(session->sock, (struct sockaddr *) &sa, sizeof(sa));
 }
 
+static int set_l2cap_mtu(int sk, uint16_t mtu)
+{
+	struct l2cap_options l2o;
+	socklen_t len;
+
+	memset(&l2o, 0, sizeof(l2o));
+	len = sizeof(l2o);
+
+	if (getsockopt(sk, SOL_L2CAP, L2CAP_OPTIONS, &l2o, &len) < 0)
+		return -1;
+
+	l2o.imtu = mtu;
+	l2o.omtu = mtu;
+
+	if (setsockopt(sk, SOL_L2CAP, L2CAP_OPTIONS, &l2o, sizeof(l2o)) < 0)
+		return -1;
+
+	return 0;
+}
+
 static int sdp_connect_l2cap(const bdaddr_t *src,
 		const bdaddr_t *dst, sdp_session_t *session)
 {
 	uint32_t flags = session->flags;
 	struct sockaddr_l2 sa;
 	int sk;
-	int sockflags = SOCK_SEQPACKET | O_CLOEXEC;
+	int sockflags = SOCK_SEQPACKET | SOCK_CLOEXEC;
 
 	if (flags & SDP_NON_BLOCKING)
-		sockflags |= O_NONBLOCK;
+		sockflags |= SOCK_NONBLOCK;
 
 	session->sock = socket(PF_BLUETOOTH, sockflags, BTPROTO_L2CAP);
 	if (session->sock < 0)
@@ -4708,6 +4747,10 @@ static int sdp_connect_l2cap(const bdaddr_t *src,
 		struct linger l = { .l_onoff = 1, .l_linger = 1 };
 		setsockopt(sk, SOL_SOCKET, SO_LINGER, &l, sizeof(l));
 	}
+
+	if ((flags & SDP_LARGE_MTU) &&
+				set_l2cap_mtu(sk, SDP_LARGE_L2CAP_MTU) < 0)
+		return -1;
 
 	sa.l2_psm = htobs(SDP_PSM);
 	sa.l2_bdaddr = *dst;
@@ -4804,7 +4847,7 @@ int sdp_set_supp_feat(sdp_record_t *rec, const sdp_list_t *sf)
 			free(dtds);
 			goto fail;
 		}
-		lengths = malloc(plen * sizeof(int *));
+		lengths = malloc(plen * sizeof(int));
 		if (!lengths) {
 			free(dtds);
 			free(vals);
@@ -4904,6 +4947,7 @@ int sdp_get_supp_feat(const sdp_record_t *rec, sdp_list_t **seqp)
 				length = 0;
 				break;
 			default:
+				sdp_list_free(subseq, free);
 				goto fail;
 			}
 

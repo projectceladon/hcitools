@@ -2,22 +2,22 @@
  *
  *  BlueZ - Bluetooth protocol stack for Linux
  *
- *  Copyright (C) 2011-2012  Intel Corporation
- *  Copyright (C) 2004-2010  Marcel Holtmann <marcel@holtmann.org>
+ *  Copyright (C) 2011-2014  Intel Corporation
+ *  Copyright (C) 2002-2010  Marcel Holtmann <marcel@holtmann.org>
  *
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ *  This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Lesser General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2.1 of the License, or (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
+ *  This library is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Lesser General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
+ *  You should have received a copy of the GNU Lesser General Public
+ *  License along with this library; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
@@ -26,41 +26,110 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <inttypes.h>
 
-#include <bluetooth/bluetooth.h>
+#include "lib/bluetooth.h"
+#include "lib/uuid.h"
 
+#include "src/shared/util.h"
 #include "bt.h"
 #include "packet.h"
 #include "display.h"
 #include "l2cap.h"
-#include "uuid.h"
+#include "keys.h"
 #include "sdp.h"
+#include "avctp.h"
+#include "avdtp.h"
+#include "rfcomm.h"
+#include "bnep.h"
+
+
+#define L2CAP_MODE_BASIC		0x00
+#define L2CAP_MODE_RETRANS		0x01
+#define L2CAP_MODE_FLOWCTL		0x02
+#define L2CAP_MODE_ERTM			0x03
+#define L2CAP_MODE_STREAMING		0x04
+#define L2CAP_MODE_LE_FLOWCTL		0x80
+#define L2CAP_MODE_ECRED		0x81
+
+/* L2CAP Control Field bit masks */
+#define L2CAP_CTRL_SAR_MASK		0xC000
+#define L2CAP_CTRL_REQSEQ_MASK		0x3F00
+#define L2CAP_CTRL_TXSEQ_MASK		0x007E
+#define L2CAP_CTRL_SUPERVISE_MASK	0x000C
+
+#define L2CAP_CTRL_RETRANS		0x0080
+#define L2CAP_CTRL_FINAL		0x0080
+#define L2CAP_CTRL_POLL			0x0010
+#define L2CAP_CTRL_FRAME_TYPE		0x0001 /* I- or S-Frame */
+
+#define L2CAP_CTRL_TXSEQ_SHIFT		1
+#define L2CAP_CTRL_SUPER_SHIFT		2
+#define L2CAP_CTRL_REQSEQ_SHIFT		8
+#define L2CAP_CTRL_SAR_SHIFT		14
+
+#define L2CAP_EXT_CTRL_TXSEQ_MASK	0xFFFC0000
+#define L2CAP_EXT_CTRL_SAR_MASK		0x00030000
+#define L2CAP_EXT_CTRL_SUPERVISE_MASK	0x00030000
+#define L2CAP_EXT_CTRL_REQSEQ_MASK	0x0000FFFC
+
+#define L2CAP_EXT_CTRL_POLL		0x00040000
+#define L2CAP_EXT_CTRL_FINAL		0x00000002
+#define L2CAP_EXT_CTRL_FRAME_TYPE	0x00000001 /* I- or S-Frame */
+
+#define L2CAP_EXT_CTRL_REQSEQ_SHIFT	2
+#define L2CAP_EXT_CTRL_SAR_SHIFT	16
+#define L2CAP_EXT_CTRL_SUPER_SHIFT	16
+#define L2CAP_EXT_CTRL_TXSEQ_SHIFT	18
+
+/* L2CAP Supervisory Function */
+#define L2CAP_SUPER_RR		0x00
+#define L2CAP_SUPER_REJ		0x01
+#define L2CAP_SUPER_RNR		0x02
+#define L2CAP_SUPER_SREJ	0x03
+
+/* L2CAP Segmentation and Reassembly */
+#define L2CAP_SAR_UNSEGMENTED	0x00
+#define L2CAP_SAR_START		0x01
+#define L2CAP_SAR_END		0x02
+#define L2CAP_SAR_CONTINUE	0x03
 
 #define MAX_CHAN 64
 
 struct chan_data {
 	uint16_t index;
 	uint16_t handle;
+	uint8_t ident;
 	uint16_t scid;
 	uint16_t dcid;
 	uint16_t psm;
 	uint8_t  ctrlid;
 	uint8_t  mode;
+	uint8_t  ext_ctrl;
+	uint8_t  seq_num;
+	uint16_t sdu;
 };
 
 static struct chan_data chan_list[MAX_CHAN];
 
-static void assign_scid(const struct l2cap_frame *frame,
-				uint16_t scid, uint16_t psm, uint8_t ctrlid)
+static void assign_scid(const struct l2cap_frame *frame, uint16_t scid,
+			uint16_t psm, uint8_t mode, uint8_t ctrlid)
 {
 	int i, n = -1;
+	uint8_t seq_num = 1;
+
+	if (!scid)
+		return;
 
 	for (i = 0; i < MAX_CHAN; i++) {
-		if (n < 0 && chan_list[i].handle == 0x0000)
+		if (n < 0 && chan_list[i].handle == 0x0000) {
 			n = i;
+			continue;
+		}
 
 		if (chan_list[i].index != frame->index)
 			continue;
@@ -68,16 +137,18 @@ static void assign_scid(const struct l2cap_frame *frame,
 		if (chan_list[i].handle != frame->handle)
 			continue;
 
+		if (chan_list[i].psm == psm)
+			seq_num++;
+
+		/* Don't break on match - we still need to go through all
+		 * channels to find proper seq_num.
+		 */
 		if (frame->in) {
-			if (chan_list[i].dcid == scid) {
+			if (chan_list[i].dcid == scid)
 				n = i;
-				break;
-			}
 		} else {
-			if (chan_list[i].scid == scid) {
+			if (chan_list[i].scid == scid)
 				n = i;
-				break;
-			}
 		}
 	}
 
@@ -87,6 +158,7 @@ static void assign_scid(const struct l2cap_frame *frame,
 	memset(&chan_list[n], 0, sizeof(chan_list[n]));
 	chan_list[n].index = frame->index;
 	chan_list[n].handle = frame->handle;
+	chan_list[n].ident = frame->ident;
 
 	if (frame->in)
 		chan_list[n].dcid = scid;
@@ -95,7 +167,9 @@ static void assign_scid(const struct l2cap_frame *frame,
 
 	chan_list[n].psm = psm;
 	chan_list[n].ctrlid = ctrlid;
-	chan_list[n].mode = 0;
+	chan_list[n].mode = mode;
+
+	chan_list[n].seq_num = seq_num;
 }
 
 static void release_scid(const struct l2cap_frame *frame, uint16_t scid)
@@ -123,8 +197,8 @@ static void release_scid(const struct l2cap_frame *frame, uint16_t scid)
 	}
 }
 
-static void assign_dcid(const struct l2cap_frame *frame,
-					uint16_t dcid, uint16_t scid)
+static void assign_dcid(const struct l2cap_frame *frame, uint16_t dcid,
+								uint16_t scid)
 {
 	int i;
 
@@ -135,15 +209,32 @@ static void assign_dcid(const struct l2cap_frame *frame,
 		if (chan_list[i].handle != frame->handle)
 			continue;
 
+		if (frame->ident != 0 && chan_list[i].ident != frame->ident)
+			continue;
+
 		if (frame->in) {
-			if (chan_list[i].scid == scid) {
-				chan_list[i].dcid = dcid;
-				break;
+			if (scid) {
+				if (chan_list[i].scid == scid) {
+					chan_list[i].dcid = dcid;
+					break;
+				}
+			} else {
+				if (chan_list[i].scid && !chan_list[i].dcid) {
+					chan_list[i].dcid = dcid;
+					break;
+				}
 			}
 		} else {
-			if (chan_list[i].dcid == scid) {
-				chan_list[i].scid = dcid;
-				break;
+			if (scid) {
+				if (chan_list[i].dcid == scid) {
+					chan_list[i].scid = dcid;
+					break;
+				}
+			} else {
+				if (chan_list[i].dcid && !chan_list[i].scid) {
+					chan_list[i].scid = dcid;
+					break;
+				}
 			}
 		}
 	}
@@ -175,7 +266,7 @@ static void assign_mode(const struct l2cap_frame *frame,
 	}
 }
 
-static uint16_t get_psm(const struct l2cap_frame *frame)
+static int get_chan_data_index(const struct l2cap_frame *frame)
 {
 	int i;
 
@@ -184,70 +275,228 @@ static uint16_t get_psm(const struct l2cap_frame *frame)
 					chan_list[i].ctrlid == 0)
 			continue;
 
-		if (chan_list[i].handle != frame->handle &&
+		if (chan_list[i].ctrlid != 0 &&
 					chan_list[i].ctrlid != frame->index)
+			continue;
+
+		if (chan_list[i].handle != frame->handle)
 			continue;
 
 		if (frame->in) {
 			if (chan_list[i].scid == frame->cid)
-				return chan_list[i].psm;
+				return i;
 		} else {
 			if (chan_list[i].dcid == frame->cid)
-				return chan_list[i].psm;
+				return i;
 		}
 	}
 
-	return 0;
+	return -1;
+}
+
+static struct chan_data *get_chan(const struct l2cap_frame *frame)
+{
+	int i;
+
+	if (frame->chan != UINT16_MAX)
+		return &chan_list[frame->chan];
+
+	i = get_chan_data_index(frame);
+	if (i < 0)
+		return NULL;
+
+	return &chan_list[i];
+}
+
+static uint16_t get_psm(const struct l2cap_frame *frame)
+{
+	struct chan_data *data = get_chan(frame);
+
+	if (!data)
+		return 0;
+
+	return data->psm;
 }
 
 static uint8_t get_mode(const struct l2cap_frame *frame)
 {
-	int i;
+	struct chan_data *data = get_chan(frame);
 
-	for (i = 0; i < MAX_CHAN; i++) {
-		if (chan_list[i].index != frame->index &&
-					chan_list[i].ctrlid == 0)
-			continue;
+	if (!data)
+		return 0;
 
-		if (chan_list[i].handle != frame->handle &&
-					chan_list[i].ctrlid != frame->index)
-			continue;
-
-		if (frame->in) {
-			if (chan_list[i].scid == frame->cid)
-				return chan_list[i].mode;
-		} else {
-			if (chan_list[i].dcid == frame->cid)
-				return chan_list[i].mode;
-		}
-	}
-
-	return 0;
+	return data->mode;
 }
 
-static uint16_t get_chan(const struct l2cap_frame *frame)
+static uint8_t get_seq_num(const struct l2cap_frame *frame)
+{
+	struct chan_data *data = get_chan(frame);
+
+	if (!data)
+		return 0;
+
+	return data->seq_num;
+}
+
+static void assign_ext_ctrl(const struct l2cap_frame *frame,
+					uint8_t ext_ctrl, uint16_t dcid)
 {
 	int i;
 
 	for (i = 0; i < MAX_CHAN; i++) {
-		if (chan_list[i].index != frame->index &&
-					chan_list[i].ctrlid == 0)
+		if (chan_list[i].index != frame->index)
 			continue;
 
-		if (chan_list[i].handle != frame->handle &&
-					chan_list[i].ctrlid != frame->index)
+		if (chan_list[i].handle != frame->handle)
 			continue;
 
 		if (frame->in) {
-			if (chan_list[i].scid == frame->cid)
-				return i;
+			if (chan_list[i].scid == dcid) {
+				chan_list[i].ext_ctrl = ext_ctrl;
+				break;
+			}
 		} else {
-			if (chan_list[i].dcid == frame->cid)
-				return i;
+			if (chan_list[i].dcid == dcid) {
+				chan_list[i].ext_ctrl = ext_ctrl;
+				break;
+			}
 		}
 	}
+}
 
-	return 0;
+static uint8_t get_ext_ctrl(const struct l2cap_frame *frame)
+{
+	struct chan_data *data = get_chan(frame);
+
+	if (!data)
+		return 0;
+
+	return data->ext_ctrl;
+}
+
+static char *sar2str(uint8_t sar)
+{
+	switch (sar) {
+	case L2CAP_SAR_UNSEGMENTED:
+		return "Unsegmented";
+	case L2CAP_SAR_START:
+		return "Start";
+	case L2CAP_SAR_END:
+		return "End";
+	case L2CAP_SAR_CONTINUE:
+		return "Continuation";
+	default:
+		return "Bad SAR";
+	}
+}
+
+static char *supervisory2str(uint8_t supervisory)
+{
+	switch (supervisory) {
+	case L2CAP_SUPER_RR:
+		return "Receiver Ready (RR)";
+	case L2CAP_SUPER_REJ:
+		return "Reject (REJ)";
+	case L2CAP_SUPER_RNR:
+		return "Receiver Not Ready (RNR)";
+	case L2CAP_SUPER_SREJ:
+		return "Select Reject (SREJ)";
+	default:
+		return "Bad Supervisory";
+	}
+}
+
+static char *mode2str(uint8_t mode)
+{
+	switch (mode) {
+	case L2CAP_MODE_BASIC:
+		return "Basic";
+	case L2CAP_MODE_RETRANS:
+		return "Retransmission";
+	case L2CAP_MODE_FLOWCTL:
+		return "Flow Control";
+	case L2CAP_MODE_ERTM:
+		return "Enhanced Retransmission";
+	case L2CAP_MODE_STREAMING:
+		return "Streaming";
+	case L2CAP_MODE_LE_FLOWCTL:
+		return "LE Flow Control";
+	case L2CAP_MODE_ECRED:
+		return "Enhanced Credit";
+	default:
+		return "Unknown";
+	}
+}
+
+static void l2cap_ctrl_ext_parse(struct l2cap_frame *frame, uint32_t ctrl)
+{
+	printf("      %s:",
+		ctrl & L2CAP_EXT_CTRL_FRAME_TYPE ? "S-frame" : "I-frame");
+
+	if (ctrl & L2CAP_EXT_CTRL_FRAME_TYPE) {
+		printf(" %s",
+		supervisory2str((ctrl & L2CAP_EXT_CTRL_SUPERVISE_MASK) >>
+						L2CAP_EXT_CTRL_SUPER_SHIFT));
+
+		if (ctrl & L2CAP_EXT_CTRL_POLL)
+			printf(" P-bit");
+	} else {
+		uint8_t sar = (ctrl & L2CAP_EXT_CTRL_SAR_MASK) >>
+						L2CAP_EXT_CTRL_SAR_SHIFT;
+		printf(" %s", sar2str(sar));
+		if (sar == L2CAP_SAR_START) {
+			uint16_t len;
+
+			if (!l2cap_frame_get_le16(frame, &len))
+				return;
+
+			printf(" (len %d)", len);
+		}
+		printf(" TxSeq %d", (ctrl & L2CAP_EXT_CTRL_TXSEQ_MASK) >>
+						L2CAP_EXT_CTRL_TXSEQ_SHIFT);
+	}
+
+	printf(" ReqSeq %d", (ctrl & L2CAP_EXT_CTRL_REQSEQ_MASK) >>
+						L2CAP_EXT_CTRL_REQSEQ_SHIFT);
+
+	if (ctrl & L2CAP_EXT_CTRL_FINAL)
+		printf(" F-bit");
+}
+
+static void l2cap_ctrl_parse(struct l2cap_frame *frame, uint32_t ctrl)
+{
+	printf("      %s:",
+			ctrl & L2CAP_CTRL_FRAME_TYPE ? "S-frame" : "I-frame");
+
+	if (ctrl & 0x01) {
+		printf(" %s",
+			supervisory2str((ctrl & L2CAP_CTRL_SUPERVISE_MASK) >>
+						L2CAP_CTRL_SUPER_SHIFT));
+
+		if (ctrl & L2CAP_CTRL_POLL)
+			printf(" P-bit");
+	} else {
+		uint8_t sar;
+
+		sar = (ctrl & L2CAP_CTRL_SAR_MASK) >> L2CAP_CTRL_SAR_SHIFT;
+		printf(" %s", sar2str(sar));
+		if (sar == L2CAP_SAR_START) {
+			uint16_t len;
+
+			if (!l2cap_frame_get_le16(frame, &len))
+				return;
+
+			printf(" (len %d)", len);
+		}
+		printf(" TxSeq %d", (ctrl & L2CAP_CTRL_TXSEQ_MASK) >>
+						L2CAP_CTRL_TXSEQ_SHIFT);
+	}
+
+	printf(" ReqSeq %d", (ctrl & L2CAP_CTRL_REQSEQ_MASK) >>
+						L2CAP_CTRL_REQSEQ_SHIFT);
+
+	if (ctrl & L2CAP_CTRL_FINAL)
+		printf(" F-bit");
 }
 
 #define MAX_INDEX 16
@@ -259,31 +508,31 @@ struct index_data {
 	uint16_t frag_cid;
 };
 
-static struct index_data index_list[MAX_INDEX];
+static struct index_data index_list[MAX_INDEX][2];
 
-static void clear_fragment_buffer(uint16_t index)
+static void clear_fragment_buffer(uint16_t index, bool in)
 {
-	free(index_list[index].frag_buf);
-	index_list[index].frag_buf = NULL;
-	index_list[index].frag_pos = 0;
-	index_list[index].frag_len = 0;
+	free(index_list[index][in].frag_buf);
+	index_list[index][in].frag_buf = NULL;
+	index_list[index][in].frag_pos = 0;
+	index_list[index][in].frag_len = 0;
 }
 
 static void print_psm(uint16_t psm)
 {
-	print_field("PSM: %d (0x%4.4x)", btohs(psm), btohs(psm));
+	print_field("PSM: %d (0x%4.4x)", le16_to_cpu(psm), le16_to_cpu(psm));
 }
 
 static void print_cid(const char *type, uint16_t cid)
 {
-	print_field("%s CID: %d", type, btohs(cid));
+	print_field("%s CID: %d", type, le16_to_cpu(cid));
 }
 
 static void print_reject_reason(uint16_t reason)
 {
 	const char *str;
 
-	switch (btohs(reason)) {
+	switch (le16_to_cpu(reason)) {
 	case 0x0000:
 		str = "Command not understood";
 		break;
@@ -298,14 +547,14 @@ static void print_reject_reason(uint16_t reason)
 		break;
 	}
 
-	print_field("Reason: %s (0x%4.4x)", str, btohs(reason));
+	print_field("Reason: %s (0x%4.4x)", str, le16_to_cpu(reason));
 }
 
 static void print_conn_result(uint16_t result)
 {
 	const char *str;
 
-	switch (btohs(result)) {
+	switch (le16_to_cpu(result)) {
 	case 0x0000:
 		str = "Connection successful";
 		break;
@@ -321,19 +570,105 @@ static void print_conn_result(uint16_t result)
 	case 0x0004:
 		str = "Connection refused - no resources available";
 		break;
+	case 0x0006:
+		str = "Connection refused - Invalid Source CID";
+		break;
+	case 0x0007:
+		str = "Connection refused - Source CID already allocated";
+		break;
 	default:
 		str = "Reserved";
 		break;
 	}
 
-	print_field("Result: %s (0x%4.4x)", str, btohs(result));
+	print_field("Result: %s (0x%4.4x)", str, le16_to_cpu(result));
+}
+
+static void print_le_conn_result(uint16_t result)
+{
+	const char *str;
+
+	switch (le16_to_cpu(result)) {
+	case 0x0000:
+		str = "Connection successful";
+		break;
+	case 0x0002:
+		str = "Connection refused - PSM not supported";
+		break;
+	case 0x0004:
+		str = "Connection refused - no resources available";
+		break;
+	case 0x0005:
+		str = "Connection refused - insufficient authentication";
+		break;
+	case 0x0006:
+		str = "Connection refused - insufficient authorization";
+		break;
+	case 0x0007:
+		str = "Connection refused - insufficient encryption key size";
+		break;
+	case 0x0008:
+		str = "Connection refused - insufficient encryption";
+		break;
+	case 0x0009:
+		str = "Connection refused - Invalid Source CID";
+		break;
+	case 0x000a:
+		str = "Connection refused - Source CID already allocated";
+		break;
+	case 0x000b:
+		str = "Connection refused - unacceptable parameters";
+		break;
+	default:
+		str = "Reserved";
+		break;
+	}
+
+	print_field("Result: %s (0x%4.4x)", str, le16_to_cpu(result));
+}
+
+static void print_create_chan_result(uint16_t result)
+{
+	const char *str;
+
+	switch (le16_to_cpu(result)) {
+	case 0x0000:
+		str = "Connection successful";
+		break;
+	case 0x0001:
+		str = "Connection pending";
+		break;
+	case 0x0002:
+		str = "Connection refused - PSM not supported";
+		break;
+	case 0x0003:
+		str = "Connection refused - security block";
+		break;
+	case 0x0004:
+		str = "Connection refused - no resources available";
+		break;
+	case 0x0005:
+		str = "Connection refused - Controller ID not supported";
+		break;
+	case 0x0006:
+		str = "Connection refused - Invalid Source CID";
+		break;
+	case 0x0007:
+		str = "Connection refused - Source CID already allocated";
+		break;
+	default:
+		str = "Reserved";
+		break;
+	}
+
+	print_field("Result: %s (0x%4.4x)", str, le16_to_cpu(result));
 }
 
 static void print_conn_status(uint16_t status)
 {
         const char *str;
 
-	switch (btohs(status)) {
+	switch (le16_to_cpu(status)) {
 	case 0x0000:
 		str = "No further information available";
 		break;
@@ -348,26 +683,26 @@ static void print_conn_status(uint16_t status)
 		break;
 	}
 
-	print_field("Status: %s (0x%4.4x)", str, btohs(status));
+	print_field("Status: %s (0x%4.4x)", str, le16_to_cpu(status));
 }
 
 static void print_config_flags(uint16_t flags)
 {
 	const char *str;
 
-	if (btohs(flags) & 0x0001)
+	if (le16_to_cpu(flags) & 0x0001)
 		str = " (continuation)";
 	else
 		str = "";
 
-	print_field("Flags: 0x%4.4x%s", btohs(flags), str);
+	print_field("Flags: 0x%4.4x%s", le16_to_cpu(flags), str);
 }
 
 static void print_config_result(uint16_t result)
 {
 	const char *str;
 
-	switch (btohs(result)) {
+	switch (le16_to_cpu(result)) {
 	case 0x0000:
 		str = "Success";
 		break;
@@ -391,7 +726,7 @@ static void print_config_result(uint16_t result)
 		break;
 	}
 
-	print_field("Result: %s (0x%4.4x)", str, btohs(result));
+	print_field("Result: %s (0x%4.4x)", str, le16_to_cpu(result));
 }
 
 static struct {
@@ -410,7 +745,7 @@ static struct {
 };
 
 static void print_config_options(const struct l2cap_frame *frame,
-				uint8_t offset, uint16_t dcid, bool response)
+				uint8_t offset, uint16_t cid, bool response)
 {
 	const uint8_t *data = frame->data + offset;
 	uint16_t size = frame->size - offset;
@@ -418,7 +753,8 @@ static void print_config_options(const struct l2cap_frame *frame,
 
 	while (consumed < size - 2) {
 		const char *str = "Unknown";
-		uint8_t type = data[consumed];
+		uint8_t type = data[consumed] & 0x7f;
+		uint8_t hint = data[consumed] & 0x80;
 		uint8_t len = data[consumed + 1];
 		uint8_t expect_len = 0;
 		int i;
@@ -431,7 +767,8 @@ static void print_config_options(const struct l2cap_frame *frame,
 			}
 		}
 
-		print_field("Option: %s (0x%2.2x)", str, type);
+		print_field("Option: %s (0x%2.2x) [%s]", str, type,
+						hint ? "hint" : "mandatory");
 
 		if (expect_len == 0) {
 			consumed += 2;
@@ -448,11 +785,11 @@ static void print_config_options(const struct l2cap_frame *frame,
 		switch (type) {
 		case 0x01:
 			print_field("  MTU: %d",
-					bt_get_le16(data + consumed + 2));
+					get_le16(data + consumed + 2));
 			break;
 		case 0x02:
 			print_field("  Flush timeout: %d",
-					bt_get_le16(data + consumed + 2));
+					get_le16(data + consumed + 2));
 			break;
 		case 0x03:
 			switch (data[consumed + 3]) {
@@ -473,50 +810,31 @@ static void print_config_options(const struct l2cap_frame *frame,
 			print_field("  Service type: %s (0x%2.2x)",
 						str, data[consumed + 3]);
 			print_field("  Token rate: 0x%8.8x",
-					bt_get_le32(data + consumed + 4));
+					get_le32(data + consumed + 4));
 			print_field("  Token bucket size: 0x%8.8x",
-					bt_get_le32(data + consumed + 8));
+					get_le32(data + consumed + 8));
 			print_field("  Peak bandwidth: 0x%8.8x",
-					bt_get_le32(data + consumed + 12));
+					get_le32(data + consumed + 12));
 			print_field("  Latency: 0x%8.8x",
-					bt_get_le32(data + consumed + 16));
+					get_le32(data + consumed + 16));
 			print_field("  Delay variation: 0x%8.8x",
-					bt_get_le32(data + consumed + 20));
+					get_le32(data + consumed + 20));
                         break;
 		case 0x04:
 			if (response)
-				assign_mode(frame, data[consumed + 2], dcid);
+				assign_mode(frame, data[consumed + 2], cid);
 
-			switch (data[consumed + 2]) {
-			case 0x00:
-				str = "Basic";
-				break;
-			case 0x01:
-				str = "Retransmission";
-				break;
-			case 0x02:
-				str = "Flow control";
-				break;
-			case 0x03:
-				str = "Enhanced retransmission";
-				break;
-			case 0x04:
-				str = "Streaming";
-				break;
-			default:
-				str = "Reserved";
-				break;
-			}
 			print_field("  Mode: %s (0x%2.2x)",
-						str, data[consumed + 2]);
+					mode2str(data[consumed + 2]),
+					data[consumed + 2]);
 			print_field("  TX window size: %d", data[consumed + 3]);
 			print_field("  Max transmit: %d", data[consumed + 4]);
 			print_field("  Retransmission timeout: %d",
-					bt_get_le16(data + consumed + 5));
+					get_le16(data + consumed + 5));
 			print_field("  Monitor timeout: %d",
-					bt_get_le16(data + consumed + 7));
+					get_le16(data + consumed + 7));
 			print_field("  Maximum PDU size: %d",
-					bt_get_le16(data + consumed + 9));
+					get_le16(data + consumed + 9));
 			break;
 		case 0x05:
 			switch (data[consumed + 2]) {
@@ -553,17 +871,18 @@ static void print_config_options(const struct l2cap_frame *frame,
 			print_field("  Service type: %s (0x%2.2x)",
 						str, data[consumed + 3]);
 			print_field("  Maximum SDU size: 0x%4.4x",
-					bt_get_le16(data + consumed + 4));
+					get_le16(data + consumed + 4));
 			print_field("  SDU inter-arrival time: 0x%8.8x",
-					bt_get_le32(data + consumed + 6));
+					get_le32(data + consumed + 6));
 			print_field("  Access latency: 0x%8.8x",
-					bt_get_le32(data + consumed + 10));
+					get_le32(data + consumed + 10));
 			print_field("  Flush timeout: 0x%8.8x",
-					bt_get_le32(data + consumed + 14));
+					get_le32(data + consumed + 14));
 			break;
 		case 0x07:
-			print_field("  Max window size: %d",
-					bt_get_le16(data + consumed + 2));
+			print_field("  Extended window size: %d",
+					get_le16(data + consumed + 2));
+			assign_ext_ctrl(frame, 1, cid);
 			break;
 		default:
 			packet_hexdump(data + consumed + 2, len);
@@ -581,7 +900,7 @@ static void print_info_type(uint16_t type)
 {
 	const char *str;
 
-	switch (btohs(type)) {
+	switch (le16_to_cpu(type)) {
 	case 0x0001:
 		str = "Connectionless MTU";
 		break;
@@ -596,14 +915,14 @@ static void print_info_type(uint16_t type)
 		break;
 	}
 
-	print_field("Type: %s (0x%4.4x)", str, btohs(type));
+	print_field("Type: %s (0x%4.4x)", str, le16_to_cpu(type));
 }
 
 static void print_info_result(uint16_t result)
 {
 	const char *str;
 
-	switch (btohs(result)) {
+	switch (le16_to_cpu(result)) {
 	case 0x0000:
 		str = "Success";
 		break;
@@ -615,13 +934,10 @@ static void print_info_result(uint16_t result)
 		break;
 	}
 
-	print_field("Result: %s (0x%4.4x)", str, btohs(result));
+	print_field("Result: %s (0x%4.4x)", str, le16_to_cpu(result));
 }
 
-static struct {
-	uint8_t bit;
-	const char *str;
-} features_table[] = {
+static const struct bitfield_data features_table[] = {
 	{  0, "Flow control mode"			},
 	{  1, "Retransmission mode"			},
 	{  2, "Bi-directional QoS"			},
@@ -638,51 +954,35 @@ static struct {
 
 static void print_features(uint32_t features)
 {
-	uint32_t mask = features;
-	int i;
+	uint32_t mask;
 
 	print_field("Features: 0x%8.8x", features);
 
-	for (i = 0; features_table[i].str; i++) {
-		if (features & (1 << features_table[i].bit)) {
-			print_field("  %s", features_table[i].str);
-			mask &= ~(1 << features_table[i].bit);
-		}
-	}
-
+	mask = print_bitfield(2, features, features_table);
 	if (mask)
 		print_field("  Unknown features (0x%8.8x)", mask);
 }
 
-static struct {
-	uint16_t cid;
-	const char *str;
-} channels_table[] = {
+static const struct bitfield_data channels_table[] = {
 	{ 0x0000, "Null identifier"		},
 	{ 0x0001, "L2CAP Signaling (BR/EDR)"	},
 	{ 0x0002, "Connectionless reception"	},
 	{ 0x0003, "AMP Manager Protocol"	},
 	{ 0x0004, "Attribute Protocol"		},
 	{ 0x0005, "L2CAP Signaling (LE)"	},
-	{ 0x0006, "Security Manager"		},
+	{ 0x0006, "Security Manager (LE)"	},
+	{ 0x0007, "Security Manager (BR/EDR)"	},
 	{ 0x003f, "AMP Test Manager"		},
 	{ }
 };
 
 static void print_channels(uint64_t channels)
 {
-	uint64_t mask = channels;
-	int i;
+	uint64_t mask;
 
 	print_field("Channels: 0x%16.16" PRIx64, channels);
 
-	for (i = 0; channels_table[i].str; i++) {
-		if (channels & (1 << channels_table[i].cid)) {
-			print_field("  %s", channels_table[i].str);
-			mask &= ~(1 << channels_table[i].cid);
-		}
-	}
-
+	mask = print_bitfield(2, channels, channels_table);
 	if (mask)
 		print_field("  Unknown channels (0x%8.8" PRIx64 ")", mask);
 }
@@ -691,7 +991,7 @@ static void print_move_result(uint16_t result)
 {
 	const char *str;
 
-	switch (btohs(result)) {
+	switch (le16_to_cpu(result)) {
 	case 0x0000:
 		str = "Move success";
 		break;
@@ -718,14 +1018,14 @@ static void print_move_result(uint16_t result)
 		break;
 	}
 
-	print_field("Result: %s (0x%4.4x)", str, btohs(result));
+	print_field("Result: %s (0x%4.4x)", str, le16_to_cpu(result));
 }
 
 static void print_move_cfm_result(uint16_t result)
 {
 	const char *str;
 
-	switch (btohs(result)) {
+	switch (le16_to_cpu(result)) {
 	case 0x0000:
 		str = "Move success - both sides succeed";
 		break;
@@ -737,14 +1037,14 @@ static void print_move_cfm_result(uint16_t result)
 		break;
 	}
 
-	print_field("Result: %s (0x%4.4x)", str, btohs(result));
+	print_field("Result: %s (0x%4.4x)", str, le16_to_cpu(result));
 }
 
 static void print_conn_param_result(uint16_t result)
 {
 	const char *str;
 
-	switch (btohs(result)) {
+	switch (le16_to_cpu(result)) {
 	case 0x0000:
 		str = "Connection Parameters accepted";
 		break;
@@ -756,7 +1056,7 @@ static void print_conn_param_result(uint16_t result)
 		break;
 	}
 
-	print_field("Result: %s (0x%4.4x)", str, btohs(result));
+	print_field("Result: %s (0x%4.4x)", str, le16_to_cpu(result));
 }
 
 static void sig_cmd_reject(const struct l2cap_frame *frame)
@@ -771,7 +1071,7 @@ static void sig_cmd_reject(const struct l2cap_frame *frame)
 	data += sizeof(*pdu);
 	size -= sizeof(*pdu);
 
-	switch (btohs(pdu->reason)) {
+	switch (le16_to_cpu(pdu->reason)) {
 	case 0x0000:
 		if (size != 0) {
 			print_text(COLOR_ERROR, "invalid data size");
@@ -785,7 +1085,7 @@ static void sig_cmd_reject(const struct l2cap_frame *frame)
 			packet_hexdump(data, size);
 			break;
 		}
-		print_field("MTU: %d", bt_get_le16(data));
+		print_field("MTU: %d", get_le16(data));
 		break;
 	case 0x0002:
 		if (size != 4) {
@@ -793,10 +1093,10 @@ static void sig_cmd_reject(const struct l2cap_frame *frame)
 			packet_hexdump(data, size);
 			break;
 		}
-		dcid = bt_get_le16(data);
-		scid = bt_get_le16(data + 2);
-		print_cid("Destination", htobs(dcid));
-		print_cid("Source", htobs(scid));
+		dcid = get_le16(data);
+		scid = get_le16(data + 2);
+		print_cid("Destination", cpu_to_le16(dcid));
+		print_cid("Source", cpu_to_le16(scid));
 		break;
 	default:
 		packet_hexdump(data, size);
@@ -811,7 +1111,8 @@ static void sig_conn_req(const struct l2cap_frame *frame)
 	print_psm(pdu->psm);
 	print_cid("Source", pdu->scid);
 
-	assign_scid(frame, btohs(pdu->scid), btohs(pdu->psm), 0);
+	assign_scid(frame, le16_to_cpu(pdu->scid), le16_to_cpu(pdu->psm),
+						L2CAP_MODE_BASIC, 0);
 }
 
 static void sig_conn_rsp(const struct l2cap_frame *frame)
@@ -823,7 +1124,7 @@ static void sig_conn_rsp(const struct l2cap_frame *frame)
 	print_conn_result(pdu->result);
 	print_conn_status(pdu->status);
 
-	assign_dcid(frame, btohs(pdu->dcid), btohs(pdu->scid));
+	assign_dcid(frame, le16_to_cpu(pdu->dcid), le16_to_cpu(pdu->scid));
 }
 
 static void sig_config_req(const struct l2cap_frame *frame)
@@ -832,7 +1133,7 @@ static void sig_config_req(const struct l2cap_frame *frame)
 
 	print_cid("Destination", pdu->dcid);
 	print_config_flags(pdu->flags);
-	print_config_options(frame, 4, btohs(pdu->dcid), false);
+	print_config_options(frame, 4, le16_to_cpu(pdu->dcid), false);
 }
 
 static void sig_config_rsp(const struct l2cap_frame *frame)
@@ -842,7 +1143,7 @@ static void sig_config_rsp(const struct l2cap_frame *frame)
 	print_cid("Source", pdu->scid);
 	print_config_flags(pdu->flags);
 	print_config_result(pdu->result);
-	print_config_options(frame, 6, btohs(pdu->scid), true);
+	print_config_options(frame, 6, le16_to_cpu(pdu->scid), true);
 }
 
 static void sig_disconn_req(const struct l2cap_frame *frame)
@@ -860,7 +1161,7 @@ static void sig_disconn_rsp(const struct l2cap_frame *frame)
 	print_cid("Destination", pdu->dcid);
 	print_cid("Source", pdu->scid);
 
-	release_scid(frame, btohs(pdu->scid));
+	release_scid(frame, le16_to_cpu(pdu->scid));
 }
 
 static void sig_echo_req(const struct l2cap_frame *frame)
@@ -892,7 +1193,7 @@ static void sig_info_rsp(const struct l2cap_frame *frame)
 	data += sizeof(*pdu);
 	size -= sizeof(*pdu);
 
-	if (btohs(pdu->result) != 0x0000) {
+	if (le16_to_cpu(pdu->result) != 0x0000) {
 		if (size > 0) {
 			print_text(COLOR_ERROR, "invalid data size");
 			packet_hexdump(data, size);
@@ -900,14 +1201,14 @@ static void sig_info_rsp(const struct l2cap_frame *frame)
 		return;
 	}
 
-	switch (btohs(pdu->type)) {
+	switch (le16_to_cpu(pdu->type)) {
 	case 0x0001:
 		if (size != 2) {
 			print_text(COLOR_ERROR, "invalid data size");
 			packet_hexdump(data, size);
 			break;
 		}
-		print_field("MTU: %d", bt_get_le16(data));
+		print_field("MTU: %d", get_le16(data));
 		break;
 	case 0x0002:
 		if (size != 4) {
@@ -915,7 +1216,7 @@ static void sig_info_rsp(const struct l2cap_frame *frame)
 			packet_hexdump(data, size);
 			break;
 		}
-		print_features(bt_get_le32(data));
+		print_features(get_le32(data));
 		break;
 	case 0x0003:
 		if (size != 8) {
@@ -923,7 +1224,7 @@ static void sig_info_rsp(const struct l2cap_frame *frame)
 			packet_hexdump(data, size);
 			break;
 		}
-		print_channels(bt_get_le64(data));
+		print_channels(get_le64(data));
 		break;
 	default:
 		packet_hexdump(data, size);
@@ -939,7 +1240,8 @@ static void sig_create_chan_req(const struct l2cap_frame *frame)
 	print_cid("Source", pdu->scid);
 	print_field("Controller ID: %d", pdu->ctrlid);
 
-	assign_scid(frame, btohs(pdu->scid), btohs(pdu->psm), pdu->ctrlid);
+	assign_scid(frame, le16_to_cpu(pdu->scid), le16_to_cpu(pdu->psm),
+						L2CAP_MODE_BASIC, pdu->ctrlid);
 }
 
 static void sig_create_chan_rsp(const struct l2cap_frame *frame)
@@ -948,10 +1250,10 @@ static void sig_create_chan_rsp(const struct l2cap_frame *frame)
 
 	print_cid("Destination", pdu->dcid);
 	print_cid("Source", pdu->scid);
-	print_conn_result(pdu->result);
+	print_create_chan_result(pdu->result);
 	print_conn_status(pdu->status);
 
-	assign_dcid(frame, btohs(pdu->dcid), btohs(pdu->scid));
+	assign_dcid(frame, le16_to_cpu(pdu->dcid), le16_to_cpu(pdu->scid));
 }
 
 static void sig_move_chan_req(const struct l2cap_frame *frame)
@@ -989,10 +1291,10 @@ static void sig_conn_param_req(const struct l2cap_frame *frame)
 {
 	const struct bt_l2cap_pdu_conn_param_req *pdu = frame->data;
 
-	print_field("Min interval: %d", btohs(pdu->min_interval));
-	print_field("Max interval: %d", btohs(pdu->max_interval));
-	print_field("Slave latency: %d", btohs(pdu->latency));
-	print_field("Timeout multiplier: %d", btohs(pdu->timeout));
+	print_field("Min interval: %d", le16_to_cpu(pdu->min_interval));
+	print_field("Max interval: %d", le16_to_cpu(pdu->max_interval));
+	print_field("Slave latency: %d", le16_to_cpu(pdu->latency));
+	print_field("Timeout multiplier: %d", le16_to_cpu(pdu->timeout));
 }
 
 static void sig_conn_param_rsp(const struct l2cap_frame *frame)
@@ -1002,6 +1304,167 @@ static void sig_conn_param_rsp(const struct l2cap_frame *frame)
 	print_conn_param_result(pdu->result);
 }
 
+static void sig_le_conn_req(const struct l2cap_frame *frame)
+{
+	const struct bt_l2cap_pdu_le_conn_req *pdu = frame->data;
+
+	print_psm(pdu->psm);
+	print_cid("Source", pdu->scid);
+	print_field("MTU: %u", le16_to_cpu(pdu->mtu));
+	print_field("MPS: %u", le16_to_cpu(pdu->mps));
+	print_field("Credits: %u", le16_to_cpu(pdu->credits));
+
+	assign_scid(frame, le16_to_cpu(pdu->scid), le16_to_cpu(pdu->psm),
+						L2CAP_MODE_LE_FLOWCTL, 0);
+}
+
+static void sig_le_conn_rsp(const struct l2cap_frame *frame)
+{
+	const struct bt_l2cap_pdu_le_conn_rsp *pdu = frame->data;
+
+	print_cid("Destination", pdu->dcid);
+	print_field("MTU: %u", le16_to_cpu(pdu->mtu));
+	print_field("MPS: %u", le16_to_cpu(pdu->mps));
+	print_field("Credits: %u", le16_to_cpu(pdu->credits));
+	print_le_conn_result(pdu->result);
+
+	assign_dcid(frame, le16_to_cpu(pdu->dcid), 0);
+}
+
+static void sig_le_flowctl_creds(const struct l2cap_frame *frame)
+{
+	const struct bt_l2cap_pdu_le_flowctl_creds *pdu = frame->data;
+
+	print_cid("Source", pdu->cid);
+	print_field("Credits: %u", le16_to_cpu(pdu->credits));
+}
+
+static void sig_ecred_conn_req(const struct l2cap_frame *frame)
+{
+	const struct bt_l2cap_pdu_ecred_conn_req *pdu = frame->data;
+	uint16_t scid;
+
+	l2cap_frame_pull((void *)frame, frame, sizeof(pdu));
+
+	print_psm(pdu->psm);
+	print_field("MTU: %u", le16_to_cpu(pdu->mtu));
+	print_field("MPS: %u", le16_to_cpu(pdu->mps));
+	print_field("Credits: %u", le16_to_cpu(pdu->credits));
+
+	while (l2cap_frame_get_le16((void *)frame, &scid)) {
+		print_cid("Source", scid);
+		assign_scid(frame, scid, le16_to_cpu(pdu->psm),
+						L2CAP_MODE_ECRED, 0);
+	}
+}
+
+static void print_ecred_conn_result(uint16_t result)
+{
+	const char *str;
+
+	switch (le16_to_cpu(result)) {
+	case 0x0000:
+		str = "Connection successful";
+		break;
+	case 0x0002:
+		str = "Connection refused - PSM not supported";
+		break;
+	case 0x0004:
+		str = "Some connections refused – not enough resources "
+			"available";
+		break;
+	case 0x0005:
+		str = "All Connections refused - insufficient authentication";
+		break;
+	case 0x0006:
+		str = "All Connections refused - insufficient authorization";
+		break;
+	case 0x0007:
+		str = "All Connection refused - insufficient encryption key "
+			"size";
+		break;
+	case 0x0008:
+		str = "All Connections refused - insufficient encryption";
+		break;
+	case 0x0009:
+		str = "Some Connections refused - Invalid Source CID";
+		break;
+	case 0x000a:
+		str = "Some Connections refused - Source CID already allocated";
+		break;
+	case 0x000b:
+		str = "All Connections refused - unacceptable parameters";
+		break;
+	default:
+		str = "Reserved";
+		break;
+	}
+
+	print_field("Result: %s (0x%4.4x)", str, le16_to_cpu(result));
+}
+
+static void sig_ecred_conn_rsp(const struct l2cap_frame *frame)
+{
+	const struct bt_l2cap_pdu_ecred_conn_rsp *pdu = frame->data;
+	uint16_t dcid;
+
+	l2cap_frame_pull((void *)frame, frame, sizeof(pdu));
+
+	print_field("MTU: %u", le16_to_cpu(pdu->mtu));
+	print_field("MPS: %u", le16_to_cpu(pdu->mps));
+	print_field("Credits: %u", le16_to_cpu(pdu->credits));
+	print_ecred_conn_result(pdu->result);
+
+	while (l2cap_frame_get_le16((void *)frame, &dcid)) {
+		print_cid("Destination", dcid);
+		assign_dcid(frame, dcid, 0);
+	}
+}
+
+static void sig_ecred_reconf_req(const struct l2cap_frame *frame)
+{
+	const struct bt_l2cap_pdu_ecred_reconf_req *pdu = frame->data;
+	uint16_t scid;
+
+	l2cap_frame_pull((void *)frame, frame, sizeof(pdu));
+
+	print_field("MTU: %u", le16_to_cpu(pdu->mtu));
+	print_field("MPS: %u", le16_to_cpu(pdu->mps));
+
+	while (l2cap_frame_get_le16((void *)frame, &scid))
+		print_cid("Source", scid);
+}
+
+static void print_ecred_reconf_result(uint16_t result)
+{
+	const char *str;
+
+	switch (le16_to_cpu(result)) {
+	case 0x0000:
+		str = "Reconfiguration successful";
+		break;
+	case 0x0001:
+		str = "Reconfiguration failed - reduction in size of MTU not "
+			"allowed";
+		break;
+	case 0x0002:
+		str = "Reconfiguration failed - reduction in size of MPS not "
+			"allowed for more than one channel at a time";
+		break;
+	default:
+		str = "Reserved";
+	}
+
+	print_field("Result: %s (0x%4.4x)", str, le16_to_cpu(result));
+}
+
+static void sig_ecred_reconf_rsp(const struct l2cap_frame *frame)
+{
+	const struct bt_l2cap_pdu_ecred_reconf_rsp *pdu = frame->data;
+
+	print_ecred_reconf_result(pdu->result);
+}
+
 struct sig_opcode_data {
 	uint8_t opcode;
 	const char *str;
@@ -1009,6 +1472,24 @@ struct sig_opcode_data {
 	uint16_t size;
 	bool fixed;
 };
+
+#define SIG_ECRED \
+	{ BT_L2CAP_PDU_ECRED_CONN_REQ,					\
+	"Enhanced Credit Connection Request",				\
+	sig_ecred_conn_req, sizeof(struct bt_l2cap_pdu_ecred_conn_req), \
+	false },							\
+	{ BT_L2CAP_PDU_ECRED_CONN_RSP,					\
+	"Enhanced Credit Connection Response",				\
+	sig_ecred_conn_rsp, sizeof(struct bt_l2cap_pdu_ecred_conn_rsp), \
+	false },							\
+	{ BT_L2CAP_PDU_ECRED_RECONF_REQ,				\
+	"Enhanced Credit Reconfigure Request",				\
+	sig_ecred_reconf_req, sizeof(struct bt_l2cap_pdu_ecred_reconf_req), \
+	false },							\
+	{ BT_L2CAP_PDU_ECRED_RECONF_RSP,				\
+	"Enhanced Credit Reconfigure Respond",				\
+	sig_ecred_reconf_rsp, sizeof(struct bt_l2cap_pdu_ecred_reconf_rsp), \
+	true },
 
 static const struct sig_opcode_data bredr_sig_opcode_table[] = {
 	{ 0x01, "Command Reject",
@@ -1045,18 +1526,48 @@ static const struct sig_opcode_data bredr_sig_opcode_table[] = {
 			sig_move_chan_cfm, 4, true },
 	{ 0x11, "Move Channel Confirmation Response",
 			sig_move_chan_cfm_rsp, 2, true },
+	SIG_ECRED
 	{ },
 };
 
 static const struct sig_opcode_data le_sig_opcode_table[] = {
 	{ 0x01, "Command Reject",
 			sig_cmd_reject, 2, false },
+	{ 0x06, "Disconnection Request",
+			sig_disconn_req, 4, true },
+	{ 0x07, "Disconnection Response",
+			sig_disconn_rsp, 4, true },
 	{ 0x12, "Connection Parameter Update Request",
 			sig_conn_param_req, 8, true },
 	{ 0x13, "Connection Parameter Update Response",
 			sig_conn_param_rsp, 2, true },
+	{ 0x14, "LE Connection Request",
+			sig_le_conn_req, 10, true },
+	{ 0x15, "LE Connection Response",
+			sig_le_conn_rsp, 10, true },
+	{ 0x16, "LE Flow Control Credit",
+			sig_le_flowctl_creds, 4, true },
+	SIG_ECRED
 	{ },
 };
+
+static void l2cap_frame_init(struct l2cap_frame *frame, uint16_t index, bool in,
+				uint16_t handle, uint8_t ident,
+				uint16_t cid, uint16_t psm,
+				const void *data, uint16_t size)
+{
+	frame->index   = index;
+	frame->in      = in;
+	frame->handle  = handle;
+	frame->ident   = ident;
+	frame->cid     = cid;
+	frame->data    = data;
+	frame->size    = size;
+	frame->chan    = get_chan_data_index(frame);
+	frame->psm     = psm ? psm : get_psm(frame);
+	frame->mode    = get_mode(frame);
+	frame->seq_num = psm ? 1 : get_seq_num(frame);
+}
 
 static void bredr_sig_packet(uint16_t index, bool in, uint16_t handle,
 				uint16_t cid, const void *data, uint16_t size)
@@ -1076,7 +1587,7 @@ static void bredr_sig_packet(uint16_t index, bool in, uint16_t handle,
 			return;
 		}
 
-		len = btohs(hdr->len);
+		len = le16_to_cpu(hdr->len);
 
 		data += 4;
 		size -= 4;
@@ -1138,7 +1649,8 @@ static void bredr_sig_packet(uint16_t index, bool in, uint16_t handle,
 			}
 		}
 
-		l2cap_frame_init(&frame, index, in, handle, cid, data, len);
+		l2cap_frame_init(&frame, index, in, handle, hdr->ident, cid, 0,
+								data, len);
 		opcode_data->func(&frame);
 
 		data += len;
@@ -1164,7 +1676,7 @@ static void le_sig_packet(uint16_t index, bool in, uint16_t handle,
 		return;
 	}
 
-	len = btohs(hdr->len);
+	len = le16_to_cpu(hdr->len);
 
 	data += 4;
 	size -= 4;
@@ -1219,7 +1731,8 @@ static void le_sig_packet(uint16_t index, bool in, uint16_t handle,
 		}
 	}
 
-	l2cap_frame_init(&frame, index, in, handle, cid, data, len);
+	l2cap_frame_init(&frame, index, in, handle, hdr->ident, cid, 0,
+							data, len);
 	opcode_data->func(&frame);
 }
 
@@ -1236,7 +1749,7 @@ static void connless_packet(uint16_t index, bool in, uint16_t handle,
 		return;
 	}
 
-	psm = btohs(hdr->psm);
+	psm = le16_to_cpu(hdr->psm);
 
 	data += 2;
 	size -= 2;
@@ -1250,7 +1763,7 @@ static void connless_packet(uint16_t index, bool in, uint16_t handle,
 		break;
 	}
 
-	l2cap_frame_init(&frame, index, in, handle, cid, data, size);
+	l2cap_frame_init(&frame, index, in, handle, 0, cid, 0, data, size);
 }
 
 static void print_controller_list(const uint8_t *data, uint16_t size)
@@ -1314,23 +1827,25 @@ static void amp_cmd_reject(const struct l2cap_frame *frame)
 {
 	const struct bt_l2cap_amp_cmd_reject *pdu = frame->data;
 
-	print_field("Reason: 0x%4.4x", btohs(pdu->reason));
+	print_field("Reason: 0x%4.4x", le16_to_cpu(pdu->reason));
 }
 
 static void amp_discover_req(const struct l2cap_frame *frame)
 {
 	const struct bt_l2cap_amp_discover_req *pdu = frame->data;
 
-	print_field("MTU/MPS size: %d", btohs(pdu->size));
-	print_field("Extended feature mask: 0x%4.4x", btohs(pdu->features));
+	print_field("MTU/MPS size: %d", le16_to_cpu(pdu->size));
+	print_field("Extended feature mask: 0x%4.4x",
+					le16_to_cpu(pdu->features));
 }
 
 static void amp_discover_rsp(const struct l2cap_frame *frame)
 {
 	const struct bt_l2cap_amp_discover_rsp *pdu = frame->data;
 
-	print_field("MTU/MPS size: %d", btohs(pdu->size));
-	print_field("Extended feature mask: 0x%4.4x", btohs(pdu->features));
+	print_field("MTU/MPS size: %d", le16_to_cpu(pdu->size));
+	print_field("Extended feature mask: 0x%4.4x",
+					le16_to_cpu(pdu->features));
 
 	print_controller_list(frame->data + 4, frame->size - 4);
 }
@@ -1372,12 +1887,13 @@ static void amp_get_info_rsp(const struct l2cap_frame *frame)
 
 	print_field("Status: %s (0x%2.2x)", str, pdu->status);
 
-	print_field("Total bandwidth: %d kbps", btohl(pdu->total_bw));
-	print_field("Max guaranteed bandwidth: %d kbps", btohl(pdu->max_bw));
-	print_field("Min latency: %d", btohl(pdu->min_latency));
+	print_field("Total bandwidth: %d kbps", le32_to_cpu(pdu->total_bw));
+	print_field("Max guaranteed bandwidth: %d kbps",
+						le32_to_cpu(pdu->max_bw));
+	print_field("Min latency: %d", le32_to_cpu(pdu->min_latency));
 
-	print_field("PAL capabilities: 0x%4.4x", btohs(pdu->pal_cap));
-	print_field("Max ASSOC length: %d", btohs(pdu->max_assoc_len));
+	print_field("PAL capabilities: 0x%4.4x", le16_to_cpu(pdu->pal_cap));
+	print_field("Max ASSOC length: %d", le16_to_cpu(pdu->max_assoc_len));
 }
 
 static void amp_get_assoc_req(const struct l2cap_frame *frame)
@@ -1547,8 +2063,8 @@ static void amp_packet(uint16_t index, bool in, uint16_t handle,
 		return;
 	}
 
-	control = bt_get_le16(data);
-	fcs = bt_get_le16(data + size - 2);
+	control = get_le16(data);
+	fcs = get_le16(data + size - 2);
 
 	print_indent(6, COLOR_CYAN, "Channel:", "", COLOR_OFF,
 				" %d dlen %d control 0x%4.4x fcs 0x%4.4x",
@@ -1565,7 +2081,7 @@ static void amp_packet(uint16_t index, bool in, uint16_t handle,
 
 	opcode = *((const uint8_t *) (data + 2));
 	ident = *((const uint8_t *) (data + 3));
-	len = bt_get_le16(data + 4);
+	len = get_le16(data + 4);
 
 	if (len != size - 8) {
 		print_text(COLOR_ERROR, "invalid manager packet size");
@@ -1616,7 +2132,7 @@ static void amp_packet(uint16_t index, bool in, uint16_t handle,
 		}
 	}
 
-	l2cap_frame_init(&frame, index, in, handle, cid, data + 6, len);
+	l2cap_frame_init(&frame, index, in, handle, 0, cid, 0, data + 6, len);
 	opcode_data->func(&frame);
 }
 
@@ -1637,23 +2153,24 @@ static void print_hex_field(const char *label, const uint8_t *data,
 static void print_uuid(const char *label, const void *data, uint16_t size)
 {
 	const char *str;
+	char uuidstr[MAX_LEN_UUID_STR];
 
 	switch (size) {
 	case 2:
-		str = uuid16_to_str(bt_get_le16(data));
-		print_field("%s: %s (0x%4.4x)", label, str, bt_get_le16(data));
+		str = bt_uuid16_to_str(get_le16(data));
+		print_field("%s: %s (0x%4.4x)", label, str, get_le16(data));
 		break;
 	case 4:
-		str = uuid32_to_str(bt_get_le32(data));
-		print_field("%s: %s (0x%8.8x)", label, str, bt_get_le32(data));
+		str = bt_uuid32_to_str(get_le32(data));
+		print_field("%s: %s (0x%8.8x)", label, str, get_le32(data));
 		break;
 	case 16:
-		str = uuid128_to_str(data);
-		print_field("%s: %s (%8.8x-%4.4x-%4.4x-%4.4x-%8.8x%4.4x)",
-				label, str,
-				bt_get_le32(data + 12), bt_get_le16(data + 10),
-				bt_get_le16(data + 8), bt_get_le16(data + 6),
-				bt_get_le32(data + 2), bt_get_le16(data + 0));
+		sprintf(uuidstr, "%8.8x-%4.4x-%4.4x-%4.4x-%8.8x%4.4x",
+				get_le32(data + 12), get_le16(data + 10),
+				get_le16(data + 8), get_le16(data + 6),
+				get_le32(data + 2), get_le16(data + 0));
+		str = bt_uuidstr_to_str(uuidstr);
+		print_field("%s: %s (%s)", label, str, uuidstr);
 		break;
 	default:
 		packet_hexdump(data, size);
@@ -1664,7 +2181,7 @@ static void print_uuid(const char *label, const void *data, uint16_t size)
 static void print_handle_range(const char *label, const void *data)
 {
 	print_field("%s: 0x%4.4x-0x%4.4x", label,
-				bt_get_le16(data), bt_get_le16(data + 2));
+				get_le16(data), get_le16(data + 2));
 }
 
 static void print_data_list(const char *label, uint8_t length,
@@ -1680,7 +2197,7 @@ static void print_data_list(const char *label, uint8_t length,
 	print_field("%s: %u entr%s", label, count, count == 1 ? "y" : "ies");
 
 	while (size >= length) {
-		print_field("Handle: 0x%4.4x", bt_get_le16(data));
+		print_field("Handle: 0x%4.4x", get_le16(data));
 		print_hex_field("Value", data + 2, length - 2);
 
 		data += length;
@@ -1692,7 +2209,7 @@ static void print_data_list(const char *label, uint8_t length,
 
 static void print_attribute_info(uint16_t type, const void *data, uint16_t len)
 {
-	const char *str = uuid16_to_str(type);
+	const char *str = bt_uuid16_to_str(type);
 
 	print_field("%s: %s (0x%4.4x)", "Attribute type", str, type);
 
@@ -1715,7 +2232,7 @@ static void print_attribute_info(uint16_t type, const void *data, uint16_t len)
 			break;
 		}
 		print_field("  Properties: 0x%2.2x", *((uint8_t *) data));
-		print_field("  Handle: 0x%2.2x", bt_get_le16(data + 1));
+		print_field("  Handle: 0x%2.2x", get_le16(data + 1));
 		print_uuid("  UUID", data + 3, len - 3);
 		break;
 	default:
@@ -1783,6 +2300,21 @@ static void att_error_response(const struct l2cap_frame *frame)
 	case 0x11:
 		str = "Insufficient Resources";
 		break;
+	case 0x12:
+		str = "Database Out of Sync";
+		break;
+	case 0x13:
+		str = "Value Not Allowed";
+		break;
+	case 0xfd:
+		str = "CCC Improperly Configured";
+		break;
+	case 0xfe:
+		str = "Procedure Already in Progress";
+		break;
+	case 0xff:
+		str = "Out of Range";
+		break;
 	default:
 		str = "Reserved";
 		break;
@@ -1790,7 +2322,7 @@ static void att_error_response(const struct l2cap_frame *frame)
 
 	print_field("%s (0x%2.2x)", att_opcode_to_str(pdu->request),
 							pdu->request);
-	print_field("Handle: 0x%4.4x", btohs(pdu->handle));
+	print_field("Handle: 0x%4.4x", le16_to_cpu(pdu->handle));
 	print_field("Error: %s (0x%2.2x)", str, pdu->error);
 }
 
@@ -1798,14 +2330,14 @@ static void att_exchange_mtu_req(const struct l2cap_frame *frame)
 {
 	const struct bt_l2cap_att_exchange_mtu_req *pdu = frame->data;
 
-	print_field("Client RX MTU: %d", btohs(pdu->mtu));
+	print_field("Client RX MTU: %d", le16_to_cpu(pdu->mtu));
 }
 
 static void att_exchange_mtu_rsp(const struct l2cap_frame *frame)
 {
 	const struct bt_l2cap_att_exchange_mtu_rsp *pdu = frame->data;
 
-	print_field("Server RX MTU: %d", btohs(pdu->mtu));
+	print_field("Server RX MTU: %d", le16_to_cpu(pdu->mtu));
 }
 
 static void att_find_info_req(const struct l2cap_frame *frame)
@@ -1825,10 +2357,10 @@ static const char *att_format_str(uint8_t format)
 	}
 }
 
-static uint16_t print_info_data_16(const uint16_t *data, uint16_t len)
+static uint16_t print_info_data_16(const void *data, uint16_t len)
 {
 	while (len >= 4) {
-		print_field("Handle: 0x%4.4x", bt_get_le16(data));
+		print_field("Handle: 0x%4.4x", get_le16(data));
 		print_uuid("UUID", data + 2, 2);
 		data += 4;
 		len -= 4;
@@ -1837,10 +2369,10 @@ static uint16_t print_info_data_16(const uint16_t *data, uint16_t len)
 	return len;
 }
 
-static uint16_t print_info_data_128(const uint16_t *data, uint16_t len)
+static uint16_t print_info_data_128(const void *data, uint16_t len)
 {
 	while (len >= 18) {
-		print_field("Handle: 0x%4.4x", bt_get_le16(data));
+		print_field("Handle: 0x%4.4x", get_le16(data));
 		print_uuid("UUID", data + 2, 16);
 		data += 18;
 		len -= 18;
@@ -1872,7 +2404,7 @@ static void att_find_by_type_val_req(const struct l2cap_frame *frame)
 
 	print_handle_range("Handle range", frame->data);
 
-	type = bt_get_le16(frame->data + 4);
+	type = get_le16(frame->data + 4);
 	print_attribute_info(type, frame->data + 6, frame->size - 6);
 }
 
@@ -1909,7 +2441,7 @@ static void att_read_req(const struct l2cap_frame *frame)
 {
 	const struct bt_l2cap_att_read_req *pdu = frame->data;
 
-	print_field("Handle: 0x%4.4x", btohs(pdu->handle));
+	print_field("Handle: 0x%4.4x", le16_to_cpu(pdu->handle));
 }
 
 static void att_read_rsp(const struct l2cap_frame *frame)
@@ -1919,8 +2451,8 @@ static void att_read_rsp(const struct l2cap_frame *frame)
 
 static void att_read_blob_req(const struct l2cap_frame *frame)
 {
-	print_field("Handle: 0x%4.4x", bt_get_le16(frame->data));
-	print_field("Offset: 0x%4.4x", bt_get_le16(frame->data + 2));
+	print_field("Handle: 0x%4.4x", get_le16(frame->data));
+	print_field("Offset: 0x%4.4x", get_le16(frame->data + 2));
 }
 
 static void att_read_blob_rsp(const struct l2cap_frame *frame)
@@ -1936,7 +2468,7 @@ static void att_read_multiple_req(const struct l2cap_frame *frame)
 
 	for (i = 0; i < count; i++)
 		print_field("Handle: 0x%4.4x",
-					bt_get_le16(frame->data + (i * 2)));
+					get_le16(frame->data + (i * 2)));
 }
 
 static void att_read_group_type_req(const struct l2cap_frame *frame)
@@ -1945,18 +2477,41 @@ static void att_read_group_type_req(const struct l2cap_frame *frame)
 	print_uuid("Attribute group type", frame->data + 4, frame->size - 4);
 }
 
+static void print_group_list(const char *label, uint8_t length,
+					const void *data, uint16_t size)
+{
+	uint8_t count;
+
+	if (length == 0)
+		return;
+
+	count = size / length;
+
+	print_field("%s: %u entr%s", label, count, count == 1 ? "y" : "ies");
+
+	while (size >= length) {
+		print_handle_range("Handle range", data);
+		print_uuid("UUID", data + 4, length - 4);
+
+		data += length;
+		size -= length;
+	}
+
+	packet_hexdump(data, size);
+}
+
 static void att_read_group_type_rsp(const struct l2cap_frame *frame)
 {
 	const struct bt_l2cap_att_read_group_type_rsp *pdu = frame->data;
 
 	print_field("Attribute data length: %d", pdu->length);
-	print_data_list("Attribute data list", pdu->length,
+	print_group_list("Attribute group list", pdu->length,
 					frame->data + 1, frame->size - 1);
 }
 
 static void att_write_req(const struct l2cap_frame *frame)
 {
-	print_field("Handle: 0x%4.4x", bt_get_le16(frame->data));
+	print_field("Handle: 0x%4.4x", get_le16(frame->data));
 	print_hex_field("  Data", frame->data + 2, frame->size - 2);
 }
 
@@ -1966,15 +2521,15 @@ static void att_write_rsp(const struct l2cap_frame *frame)
 
 static void att_prepare_write_req(const struct l2cap_frame *frame)
 {
-	print_field("Handle: 0x%4.4x", bt_get_le16(frame->data));
-	print_field("Offset: 0x%4.4x", bt_get_le16(frame->data + 2));
+	print_field("Handle: 0x%4.4x", get_le16(frame->data));
+	print_field("Offset: 0x%4.4x", get_le16(frame->data + 2));
 	print_hex_field("  Data", frame->data + 4, frame->size - 4);
 }
 
 static void att_prepare_write_rsp(const struct l2cap_frame *frame)
 {
-	print_field("Handle: 0x%4.4x", bt_get_le16(frame->data));
-	print_field("Offset: 0x%4.4x", bt_get_le16(frame->data + 2));
+	print_field("Handle: 0x%4.4x", get_le16(frame->data));
+	print_field("Offset: 0x%4.4x", get_le16(frame->data + 2));
 	print_hex_field("  Data", frame->data + 4, frame->size - 4);
 }
 
@@ -2002,7 +2557,7 @@ static void att_handle_value_notify(const struct l2cap_frame *frame)
 {
 	const struct bt_l2cap_att_handle_value_notify *pdu = frame->data;
 
-	print_field("Handle: 0x%4.4x", btohs(pdu->handle));
+	print_field("Handle: 0x%4.4x", le16_to_cpu(pdu->handle));
 	print_hex_field("  Data", frame->data + 2, frame->size - 2);
 }
 
@@ -2010,7 +2565,7 @@ static void att_handle_value_ind(const struct l2cap_frame *frame)
 {
 	const struct bt_l2cap_att_handle_value_ind *pdu = frame->data;
 
-	print_field("Handle: 0x%4.4x", btohs(pdu->handle));
+	print_field("Handle: 0x%4.4x", le16_to_cpu(pdu->handle));
 	print_hex_field("  Data", frame->data + 2, frame->size - 2);
 }
 
@@ -2020,8 +2575,15 @@ static void att_handle_value_conf(const struct l2cap_frame *frame)
 
 static void att_write_command(const struct l2cap_frame *frame)
 {
-	print_field("Handle: 0x%4.4x", bt_get_le16(frame->data));
+	print_field("Handle: 0x%4.4x", get_le16(frame->data));
 	print_hex_field("  Data", frame->data + 2, frame->size - 2);
+}
+
+static void att_signed_write_command(const struct l2cap_frame *frame)
+{
+	print_field("Handle: 0x%4.4x", get_le16(frame->data));
+	print_hex_field("  Data", frame->data + 2, frame->size - 2 - 12);
+	print_hex_field("  Signature", frame->data + frame->size - 12, 12);
 }
 
 struct att_opcode_data {
@@ -2085,7 +2647,7 @@ static const struct att_opcode_data att_opcode_table[] = {
 			att_handle_value_conf, 0, true },
 	{ 0x52, "Write Command",
 			att_write_command, 2, false },
-	{ 0xd2, "Signed Write Command"		},
+	{ 0xd2, "Signed Write Command", att_signed_write_command, 14, false },
 	{ }
 };
 
@@ -2159,7 +2721,8 @@ static void att_packet(uint16_t index, bool in, uint16_t handle,
 		}
 	}
 
-	l2cap_frame_init(&frame, index, in, handle, cid, data + 1, size - 1);
+	l2cap_frame_init(&frame, index, in, handle, 0, cid, 0,
+						data + 1, size - 1);
 	opcode_data->func(&frame);
 }
 
@@ -2269,22 +2832,63 @@ static void print_smp_oob_data(uint8_t oob_data)
 
 static void print_smp_auth_req(uint8_t auth_req)
 {
-	const char *str;
+	const char *bond, *mitm, *sc, *kp, *ct2;
 
 	switch (auth_req & 0x03) {
 	case 0x00:
-		str = "No bonding";
+		bond = "No bonding";
 		break;
 	case 0x01:
-		str = "Bonding";
+		bond = "Bonding";
 		break;
 	default:
-		str = "Reserved";
+		bond = "Reserved";
 		break;
 	}
 
-	print_field("Authentication requirement: %s - %s (0x%2.2x)",
-			str, (auth_req & 0x04) ? "MITM" : "No MITM", auth_req);
+	if (auth_req & 0x04)
+		mitm = "MITM";
+	else
+		mitm = "No MITM";
+
+	if (auth_req & 0x08)
+		sc = "SC";
+	else
+		sc = "Legacy";
+
+	if (auth_req & 0x10)
+		kp = "Keypresses";
+	else
+		kp = "No Keypresses";
+
+	if (auth_req & 0x20)
+		ct2 = ", CT2";
+	else
+		ct2 = "";
+
+	print_field("Authentication requirement: %s, %s, %s, %s%s (0x%2.2x)",
+					bond, mitm, sc, kp, ct2, auth_req);
+}
+
+static void print_smp_key_dist(const char *label, uint8_t dist)
+{
+	char str[27];
+
+	if (!(dist & 0x07)) {
+		strcpy(str, "<none> ");
+	} else {
+		str[0] = '\0';
+		if (dist & 0x01)
+			strcat(str, "EncKey ");
+		if (dist & 0x02)
+			strcat(str, "IdKey ");
+		if (dist & 0x04)
+			strcat(str, "Sign ");
+		if (dist & 0x08)
+			strcat(str, "LinkKey ");
+	}
+
+	print_field("%s: %s(0x%2.2x)", label, str, dist);
 }
 
 static void smp_pairing_request(const struct l2cap_frame *frame)
@@ -2296,8 +2900,8 @@ static void smp_pairing_request(const struct l2cap_frame *frame)
 	print_smp_auth_req(pdu->auth_req);
 
 	print_field("Max encryption key size: %d", pdu->max_key_size);
-	print_field("Initiator key distribution: 0x%2.2x", pdu->init_key_dist);
-	print_field("Responder key distribution: 0x%2.2x", pdu->resp_key_dist);
+	print_smp_key_dist("Initiator key distribution", pdu->init_key_dist);
+	print_smp_key_dist("Responder key distribution", pdu->resp_key_dist);
 }
 
 static void smp_pairing_response(const struct l2cap_frame *frame)
@@ -2309,8 +2913,8 @@ static void smp_pairing_response(const struct l2cap_frame *frame)
 	print_smp_auth_req(pdu->auth_req);
 
 	print_field("Max encryption key size: %d", pdu->max_key_size);
-	print_field("Initiator key distribution: 0x%2.2x", pdu->init_key_dist);
-	print_field("Responder key distribution: 0x%2.2x", pdu->resp_key_dist);
+	print_smp_key_dist("Initiator key distribution", pdu->init_key_dist);
+	print_smp_key_dist("Responder key distribution", pdu->resp_key_dist);
 }
 
 static void smp_pairing_confirm(const struct l2cap_frame *frame)
@@ -2363,6 +2967,18 @@ static void smp_pairing_failed(const struct l2cap_frame *frame)
 	case 0x0a:
 		str = "Invalid parameters";
 		break;
+	case 0x0b:
+		str = "DHKey check failed";
+		break;
+	case 0x0c:
+		str = "Numeric comparison failed";
+		break;
+	case 0x0d:
+		str = "BR/EDR pairing in progress";
+		break;
+	case 0x0e:
+		str = "Cross-transport Key Derivation/Generation not allowed";
+		break;
 	default:
 		str = "Reserved";
 		break;
@@ -2382,8 +2998,8 @@ static void smp_master_ident(const struct l2cap_frame *frame)
 {
 	const struct bt_l2cap_smp_master_ident *pdu = frame->data;
 
-	print_field("EDIV: 0x%4.4x", btohs(pdu->ediv));
-	print_field("Rand: 0x%16.16" PRIx64, btohll(pdu->rand));
+	print_field("EDIV: 0x%4.4x", le16_to_cpu(pdu->ediv));
+	print_field("Rand: 0x%16.16" PRIx64, le64_to_cpu(pdu->rand));
 }
 
 static void smp_ident_info(const struct l2cap_frame *frame)
@@ -2391,6 +3007,8 @@ static void smp_ident_info(const struct l2cap_frame *frame)
 	const struct bt_l2cap_smp_ident_info *pdu = frame->data;
 
 	print_hex_field("Identity resolving key", pdu->irk, 16);
+
+	keys_update_identity_key(pdu->irk);
 }
 
 static void smp_ident_addr_info(const struct l2cap_frame *frame)
@@ -2399,6 +3017,8 @@ static void smp_ident_addr_info(const struct l2cap_frame *frame)
 
 	print_addr_type(pdu->addr_type);
 	print_addr(pdu->addr, pdu->addr_type);
+
+	keys_update_identity_addr(pdu->addr, pdu->addr_type);
 }
 
 static void smp_signing_info(const struct l2cap_frame *frame)
@@ -2413,6 +3033,50 @@ static void smp_security_request(const struct l2cap_frame *frame)
 	const struct bt_l2cap_smp_security_request *pdu = frame->data;
 
 	print_smp_auth_req(pdu->auth_req);
+}
+
+static void smp_pairing_public_key(const struct l2cap_frame *frame)
+{
+	const struct bt_l2cap_smp_public_key *pdu = frame->data;
+
+	print_hex_field("X", pdu->x, 32);
+	print_hex_field("Y", pdu->y, 32);
+}
+
+static void smp_pairing_dhkey_check(const struct l2cap_frame *frame)
+{
+	const struct bt_l2cap_smp_dhkey_check *pdu = frame->data;
+
+	print_hex_field("E", pdu->e, 16);
+}
+
+static void smp_pairing_keypress_notification(const struct l2cap_frame *frame)
+{
+	const struct bt_l2cap_smp_keypress_notify *pdu = frame->data;
+	const char *str;
+
+	switch (pdu->type) {
+	case 0x00:
+		str = "Passkey entry started";
+		break;
+	case 0x01:
+		str = "Passkey digit entered";
+		break;
+	case 0x02:
+		str = "Passkey digit erased";
+		break;
+	case 0x03:
+		str = "Passkey cleared";
+		break;
+	case 0x04:
+		str = "Passkey entry completed";
+		break;
+	default:
+		str = "Reserved";
+		break;
+	}
+
+	print_field("Type: %s (0x%2.2x)", str, pdu->type);
 }
 
 struct smp_opcode_data {
@@ -2446,6 +3110,12 @@ static const struct smp_opcode_data smp_opcode_table[] = {
 			smp_signing_info, 16, true },
 	{ 0x0b, "Security Request",
 			smp_security_request, 1, true },
+	{ 0x0c, "Pairing Public Key",
+			smp_pairing_public_key, 64, true },
+	{ 0x0d, "Pairing DHKey Check",
+			smp_pairing_dhkey_check, 16, true },
+	{ 0x0e, "Pairing Keypress Notification",
+			smp_pairing_keypress_notification, 1, true },
 	{ }
 };
 
@@ -2485,8 +3155,9 @@ static void smp_packet(uint16_t index, bool in, uint16_t handle,
 		opcode_str = "Unknown";
 	}
 
-	print_indent(6, opcode_color, "SMP: ", opcode_str, COLOR_OFF,
-				" (0x%2.2x) len %d", opcode, size - 1);
+	print_indent(6, opcode_color, cid == 0x0006 ? "SMP: " : "BR/EDR SMP: ",
+				opcode_str, COLOR_OFF, " (0x%2.2x) len %d",
+				opcode, size - 1);
 
 	if (!opcode_data || !opcode_data->func) {
 		packet_hexdump(data + 1, size - 1);
@@ -2507,16 +3178,19 @@ static void smp_packet(uint16_t index, bool in, uint16_t handle,
 		}
 	}
 
-	l2cap_frame_init(&frame, index, in, handle, cid, data + 1, size - 1);
+	l2cap_frame_init(&frame, index, in, handle, 0, cid, 0,
+						data + 1, size - 1);
 	opcode_data->func(&frame);
 }
 
-static void l2cap_frame(uint16_t index, bool in, uint16_t handle,
-			uint16_t cid, const void *data, uint16_t size)
+void l2cap_frame(uint16_t index, bool in, uint16_t handle, uint16_t cid,
+			uint16_t psm, const void *data, uint16_t size)
 {
 	struct l2cap_frame frame;
-	uint16_t psm, chan;
-	uint8_t mode;
+	struct chan_data *chan;
+	uint32_t ctrl32 = 0;
+	uint16_t ctrl16 = 0;
+	uint8_t ext_ctrl;
 
 	switch (cid) {
 	case 0x0001:
@@ -2535,24 +3209,90 @@ static void l2cap_frame(uint16_t index, bool in, uint16_t handle,
 		le_sig_packet(index, in, handle, cid, data, size);
 		break;
 	case 0x0006:
+	case 0x0007:
 		smp_packet(index, in, handle, cid, data, size);
 		break;
 	default:
-		l2cap_frame_init(&frame, index, in, handle, cid, data, size);
-		psm = get_psm(&frame);
-		mode = get_mode(&frame);
-		chan = get_chan(&frame);
+		l2cap_frame_init(&frame, index, in, handle, 0, cid, psm,
+							data, size);
 
-		print_indent(6, COLOR_CYAN, "Channel:", "", COLOR_OFF,
-				" %d len %d [PSM %d mode %d] {chan %d}",
-						cid, size, psm, mode, chan);
+		switch (frame.mode) {
+		case L2CAP_MODE_LE_FLOWCTL:
+		case L2CAP_MODE_ECRED:
+			chan = get_chan(&frame);
+			if (!chan->sdu) {
+				if (!l2cap_frame_get_le16(&frame, &chan->sdu))
+					return;
+			}
+			print_indent(6, COLOR_CYAN, "Channel:", "",
+					COLOR_OFF, " %d len %d sdu %d"
+					" [PSM %d mode %s (0x%02x)] {chan %d}",
+					cid, size, chan->sdu, frame.psm,
+					mode2str(frame.mode), frame.mode,
+					frame.chan);
+			chan->sdu -= frame.size;
+			break;
+		case L2CAP_MODE_BASIC:
+			print_indent(6, COLOR_CYAN, "Channel:", "", COLOR_OFF,
+					" %d len %d [PSM %d mode %s (0x%02x)] "
+					"{chan %d}", cid, size, frame.psm,
+					mode2str(frame.mode), frame.mode,
+					frame.chan);
+			break;
+		default:
+			ext_ctrl = get_ext_ctrl(&frame);
 
-		switch (psm) {
+			if (ext_ctrl) {
+				if (!l2cap_frame_get_le32(&frame, &ctrl32))
+					return;
+
+				print_indent(6, COLOR_CYAN, "Channel:", "",
+						COLOR_OFF, " %d len %d"
+						" ext_ctrl 0x%8.8x"
+						" [PSM %d mode %s (0x%02x)] "
+						"{chan %d}", cid, size, ctrl32,
+						frame.psm, mode2str(frame.mode),
+						frame.mode, frame.chan);
+
+				l2cap_ctrl_ext_parse(&frame, ctrl32);
+			} else {
+				if (!l2cap_frame_get_le16(&frame, &ctrl16))
+					return;
+
+				print_indent(6, COLOR_CYAN, "Channel:", "",
+						COLOR_OFF, " %d len %d"
+						" ctrl 0x%4.4x"
+						" [PSM %d mode %s (0x%02x)] "
+						"{chan %d}", cid, size, ctrl16,
+						frame.psm, mode2str(frame.mode),
+						frame.mode, frame.chan);
+
+				l2cap_ctrl_parse(&frame, ctrl16);
+			}
+
+			printf("\n");
+			break;
+		}
+
+		switch (frame.psm) {
 		case 0x0001:
-			sdp_packet(&frame, chan);
+			sdp_packet(&frame);
+			break;
+		case 0x0003:
+			rfcomm_packet(&frame);
+			break;
+		case 0x000f:
+			bnep_packet(&frame);
 			break;
 		case 0x001f:
 			att_packet(index, in, handle, cid, data, size);
+			break;
+		case 0x0017:
+		case 0x001B:
+			avctp_packet(&frame);
+			break;
+		case 0x0019:
+			avdtp_packet(&frame);
 			break;
 		default:
 			packet_hexdump(data, size);
@@ -2577,10 +3317,10 @@ void l2cap_packet(uint16_t index, bool in, uint16_t handle, uint8_t flags,
 	switch (flags) {
 	case 0x00:	/* start of a non-automatically-flushable PDU */
 	case 0x02:	/* start of an automatically-flushable PDU */
-		if (index_list[index].frag_len) {
+		if (index_list[index][in].frag_len) {
 			print_text(COLOR_ERROR, "unexpected start frame");
 			packet_hexdump(data, size);
-			clear_fragment_buffer(index);
+			clear_fragment_buffer(index, in);
 			return;
 		}
 
@@ -2590,15 +3330,15 @@ void l2cap_packet(uint16_t index, bool in, uint16_t handle, uint8_t flags,
 			return;
 		}
 
-		len = btohs(hdr->len);
-		cid = btohs(hdr->cid);
+		len = le16_to_cpu(hdr->len);
+		cid = le16_to_cpu(hdr->cid);
 
 		data += sizeof(*hdr);
 		size -= sizeof(*hdr);
 
 		if (len == size) {
 			/* complete frame */
-			l2cap_frame(index, in, handle, cid, data, len);
+			l2cap_frame(index, in, handle, cid, 0, data, len);
 			return;
 		}
 
@@ -2608,54 +3348,54 @@ void l2cap_packet(uint16_t index, bool in, uint16_t handle, uint8_t flags,
 			return;
 		}
 
-		index_list[index].frag_buf = malloc(len);
-		if (!index_list[index].frag_buf) {
+		index_list[index][in].frag_buf = malloc(len);
+		if (!index_list[index][in].frag_buf) {
 			print_text(COLOR_ERROR, "failed buffer allocation");
 			packet_hexdump(data, size);
 			return;
 		}
 
-		memcpy(index_list[index].frag_buf, data, size);
-		index_list[index].frag_pos = size;
-		index_list[index].frag_len = len - size;
-		index_list[index].frag_cid = cid;
+		memcpy(index_list[index][in].frag_buf, data, size);
+		index_list[index][in].frag_pos = size;
+		index_list[index][in].frag_len = len - size;
+		index_list[index][in].frag_cid = cid;
 		break;
 
 	case 0x01:	/* continuing fragment */
-		if (!index_list[index].frag_len) {
+		if (!index_list[index][in].frag_len) {
 			print_text(COLOR_ERROR, "unexpected continuation");
 			packet_hexdump(data, size);
 			return;
 		}
 
-		if (size > index_list[index].frag_len) {
+		if (size > index_list[index][in].frag_len) {
 			print_text(COLOR_ERROR, "fragment too long");
 			packet_hexdump(data, size);
-			clear_fragment_buffer(index);
+			clear_fragment_buffer(index, in);
 			return;
 		}
 
-		memcpy(index_list[index].frag_buf +
-				index_list[index].frag_pos, data, size);
-		index_list[index].frag_pos += size;
-		index_list[index].frag_len -= size;
+		memcpy(index_list[index][in].frag_buf +
+				index_list[index][in].frag_pos, data, size);
+		index_list[index][in].frag_pos += size;
+		index_list[index][in].frag_len -= size;
 
-		if (!index_list[index].frag_len) {
+		if (!index_list[index][in].frag_len) {
 			/* complete frame */
 			l2cap_frame(index, in, handle,
-					index_list[index].frag_cid,
-					index_list[index].frag_buf,
-					index_list[index].frag_pos);
-			clear_fragment_buffer(index);
+					index_list[index][in].frag_cid, 0,
+					index_list[index][in].frag_buf,
+					index_list[index][in].frag_pos);
+			clear_fragment_buffer(index, in);
 			return;
 		}
 		break;
 
 	case 0x03:	/* complete automatically-flushable PDU */
-		if (index_list[index].frag_len) {
+		if (index_list[index][in].frag_len) {
 			print_text(COLOR_ERROR, "unexpected complete frame");
 			packet_hexdump(data, size);
-			clear_fragment_buffer(index);
+			clear_fragment_buffer(index, in);
 			return;
 		}
 
@@ -2665,8 +3405,8 @@ void l2cap_packet(uint16_t index, bool in, uint16_t handle, uint8_t flags,
 			return;
 		}
 
-		len = btohs(hdr->len);
-		cid = btohs(hdr->cid);
+		len = le16_to_cpu(hdr->len);
+		cid = le16_to_cpu(hdr->cid);
 
 		data += sizeof(*hdr);
 		size -= sizeof(*hdr);
@@ -2678,7 +3418,7 @@ void l2cap_packet(uint16_t index, bool in, uint16_t handle, uint8_t flags,
 		}
 
 		/* complete frame */
-		l2cap_frame(index, in, handle, cid, data, len);
+		l2cap_frame(index, in, handle, cid, 0, data, len);
 		break;
 
 	default:

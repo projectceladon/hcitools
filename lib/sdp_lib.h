@@ -28,8 +28,8 @@
 #define __SDP_LIB_H
 
 #include <sys/socket.h>
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
+#include "lib/bluetooth.h"
+#include "lib/hci.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -81,6 +81,7 @@ static inline void sdp_list_foreach(sdp_list_t *list, sdp_list_func_t f, void *u
 #define SDP_RETRY_IF_BUSY	0x01
 #define SDP_WAIT_ON_CLOSE	0x02
 #define SDP_NON_BLOCKING	0x04
+#define SDP_LARGE_MTU		0x08
 
 /*
  * a session with an SDP server

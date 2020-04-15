@@ -27,6 +27,7 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -37,14 +38,16 @@
 #include <syslog.h>
 #include <termios.h>
 #include <time.h>
+#include <poll.h>
 #include <sys/time.h>
-#include <sys/poll.h>
 #include <sys/param.h>
 #include <sys/ioctl.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
-#include <bluetooth/hci_lib.h>
+#include "lib/bluetooth.h"
+#include "lib/hci.h"
+#include "lib/hci_lib.h"
+
+#include "src/shared/tty.h"
 
 #include "hciattach.h"
 
@@ -84,68 +87,12 @@ static void sig_alarm(int sig)
 	exit(1);
 }
 
-int uart_speed(int s)
-{
-	switch (s) {
-	case 9600:
-		return B9600;
-	case 19200:
-		return B19200;
-	case 38400:
-		return B38400;
-	case 57600:
-		return B57600;
-	case 115200:
-		return B115200;
-	case 230400:
-		return B230400;
-	case 460800:
-		return B460800;
-	case 500000:
-		return B500000;
-	case 576000:
-		return B576000;
-	case 921600:
-		return B921600;
-	case 1000000:
-		return B1000000;
-	case 1152000:
-		return B1152000;
-	case 1500000:
-		return B1500000;
-	case 2000000:
-		return B2000000;
-#ifdef B2500000
-	case 2500000:
-		return B2500000;
-#endif
-#ifdef B3000000
-	case 3000000:
-		return B3000000;
-#endif
-#ifdef B3500000
-	case 3500000:
-		return B3500000;
-#endif
-#ifdef B3710000
-	case 3710000
-		return B3710000;
-#endif
-#ifdef B4000000
-	case 4000000:
-		return B4000000;
-#endif
-	default:
-		return B57600;
-	}
-}
-
 int set_speed(int fd, struct termios *ti, int speed)
 {
-	if (cfsetospeed(ti, uart_speed(speed)) < 0)
+	if (cfsetospeed(ti, tty_get_speed(speed)) < 0)
 		return -errno;
 
-	if (cfsetispeed(ti, uart_speed(speed)) < 0)
+	if (cfsetispeed(ti, tty_get_speed(speed)) < 0)
 		return -errno;
 
 	if (tcsetattr(fd, TCSANOW, ti) < 0)
@@ -359,23 +306,26 @@ static int ag6xx_init(int fd, struct uart_t *u, struct termios *ti)
 //add realtek Bluetooth init and post function.
 static int realtek_init(int fd, struct uart_t *u, struct termios *ti)
 {
-	int ret;
+       int ret;
+       fprintf(stderr, "Realtek Bluetooth init uart with init speed:%d, \
+	final_speed:%d, type:HCI UART %s\n", u->init_speed, u->speed,
+	(u->proto == HCI_UART_H4)? "H4":"H5" );
+       ret = rtk_init(fd, u->proto, u->speed, ti);
+       if (ret > 0) {
+               u->speed = ret;
+               ret = 0;
+       }
 
-	fprintf(stderr, "Realtek Bluetooth init uart with init speed:%d, final_speed:%d, type:HCI UART %s\n", u->init_speed, u->speed, (u->proto == HCI_UART_H4)? "H4":"H5" );
-	ret = rtk_init(fd, u->proto, u->speed, ti);
-	if (ret > 0) {
-		u->speed = ret;
-		ret = 0;
-	}
+       return ret;
 
-	return ret;
 }
 
 static int realtek_post(int fd, struct uart_t *u, struct termios *ti)
 {
-	fprintf(stderr, "Realtek Bluetooth post process\n");
-	return rtk_post(fd, u->proto, ti);
+       fprintf(stderr, "Realtek Bluetooth post process\n");
+       return rtk_post(fd, u->proto, ti);
 }
+
 
 static int read_check(int fd, void *buf, int count)
 {
@@ -691,7 +641,7 @@ static int csr(int fd, struct uart_t *u, struct termios *ti)
 		fprintf(stderr, "Speed %d too high. Remaining at %d baud\n",
 			u->speed, u->init_speed);
 		u->speed = u->init_speed;
-	} else if (u->speed != 57600 && uart_speed(u->speed) == B57600) {
+	} else if (!tty_get_speed(u->speed)) {
 		/* Unknown speed. Why oh why can't we just pass an int to the kernel? */
 		fprintf(stderr, "Speed %d unrecognised. Remaining at %d baud\n",
 			u->speed, u->init_speed);
@@ -1215,16 +1165,18 @@ struct uart_t uart[] = {
 	/* AMP controller UART */
 	{ "amp",	0x0000, 0x0000, HCI_UART_H4, 115200, 115200,
 			AMP_DEV, DISABLE_PM, NULL, NULL, NULL },
+	//Realtek_add_start
+        /* Realtek Bluetooth H4*/
+        /* H4 will set 115200 baudrate and flow control enable by default*/
+        { "rtk_h4",     0x0000, 0x0000, HCI_UART_H4,  115200,  115200,
+		        FLOW_CTL, DISABLE_PM, NULL, realtek_init, realtek_post},
+        /* Realtek Bluetooth H5*/
+        /* H5 will set 921600 baudrate and flow control disable by default */
+        /* H5 will be realtek's recommanded protocol */
+        { "rtk_h5",     0x0000, 0x0000, HCI_UART_3WIRE, 921600,921600,
+		        0, DISABLE_PM, NULL, realtek_init, realtek_post},
+        //Realtek_add_end
 
-//Realtek_add_start
-	/* Realtek Bluetooth H4*/
-	/* H4 will set 115200 baudrate and flow control enable by default*/
-	{ "rtk_h4",     0x0000, 0x0000, HCI_UART_H4,  115200,  115200, FLOW_CTL, DISABLE_PM, NULL, realtek_init, realtek_post},
-	/* Realtek Bluetooth H5*/
-	/* H5 will set 921600 baudrate and flow control disable by default */
-	/* H5 will be realtek's recommanded protocol */
-	{ "rtk_h5",     0x0000, 0x0000, HCI_UART_3WIRE, 115200,115200, 0, DISABLE_PM, NULL, realtek_init, realtek_post},
-//Realtek_add_end
 
 	{ NULL, 0 }
 };
@@ -1272,7 +1224,7 @@ static int init_uart(char *dev, struct uart_t *u, int send_break, int raw)
 
 	if (tcgetattr(fd, &ti) < 0) {
 		perror("Can't get port settings");
-		return -1;
+		goto fail;
 	}
 
 	cfmakeraw(&ti);
@@ -1285,13 +1237,13 @@ static int init_uart(char *dev, struct uart_t *u, int send_break, int raw)
 
 	if (tcsetattr(fd, TCSANOW, &ti) < 0) {
 		perror("Can't set port settings");
-		return -1;
+		goto fail;
 	}
 
 	/* Set initial baudrate */
 	if (set_speed(fd, &ti, u->init_speed) < 0) {
 		perror("Can't set initial baud rate");
-		return -1;
+		goto fail;
 	}
 
 	tcflush(fd, TCIOFLUSH);
@@ -1302,44 +1254,50 @@ static int init_uart(char *dev, struct uart_t *u, int send_break, int raw)
 	}
 
 	if (u->init && u->init(fd, u, &ti) < 0)
-		return -1;
+		goto fail;
 
 	tcflush(fd, TCIOFLUSH);
 
 	/* Set actual baudrate */
 	if (set_speed(fd, &ti, u->speed) < 0) {
 		perror("Can't set baud rate");
-		return -1;
+		goto fail;
 	}
 
 	/* Set TTY to N_HCI line discipline */
 	i = N_HCI;
 	if (ioctl(fd, TIOCSETD, &i) < 0) {
 		perror("Can't set line discipline");
-		return -1;
+		goto fail;
 	}
 
 	if (flags && ioctl(fd, HCIUARTSETFLAGS, flags) < 0) {
 		perror("Can't set UART flags");
-		return -1;
+		goto fail;
 	}
 
 	if (ioctl(fd, HCIUARTSETPROTO, u->proto) < 0) {
 		perror("Can't set device");
-		return -1;
+		goto fail;
 	}
 
 	if (u->post && u->post(fd, u, &ti) < 0)
-		return -1;
+		goto fail;
 
 	return fd;
+
+fail:
+	close(fd);
+	return -1;
 }
 
 static void usage(void)
 {
 	printf("hciattach - HCI UART driver initialization utility\n");
 	printf("Usage:\n");
-	printf("\thciattach [-n] [-p] [-b] [-r] [-t timeout] [-s initial_speed] <tty> <type | id> [speed] [flow|noflow] [sleep] [bdaddr]\n");
+	printf("\thciattach [-n] [-p] [-b] [-r] [-t timeout] [-s initial_speed]"
+			" <tty> <type | id> [speed] [flow|noflow]"
+			" [sleep|nosleep] [bdaddr]\n");
 	printf("\thciattach -l\n");
 }
 
@@ -1415,11 +1373,15 @@ int main(int argc, char *argv[])
 			dev[0] = 0;
 			if (!strchr(opt, '/'))
 				strcpy(dev, "/dev/");
-
-			if (strlen(dev) + strlen(opt) >= PATH_MAX) {
-				fprintf(stderr, "Device path too long\n");
+                        if (strlen(dev) + strlen(opt) >= PATH_MAX) {
+                               fprintf(stderr, "Device path too long\n");
+                               exit(1);
+			}
+			if (strlen(opt) > PATH_MAX - (strlen(dev) + 1)) {
+				fprintf(stderr, "Invalid serial device\n");
 				exit(1);
 			}
+
 			strcat(dev, opt);
 			break;
 
@@ -1458,8 +1420,8 @@ int main(int argc, char *argv[])
 			break;
 
 		case 5:
-                        u->bdaddr = argv[optind];
-                        break;
+			u->bdaddr = argv[optind];
+			break;
 		}
 	}
 

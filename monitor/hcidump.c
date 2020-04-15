@@ -2,22 +2,22 @@
  *
  *  BlueZ - Bluetooth protocol stack for Linux
  *
- *  Copyright (C) 2011-2012  Intel Corporation
- *  Copyright (C) 2004-2010  Marcel Holtmann <marcel@holtmann.org>
+ *  Copyright (C) 2011-2014  Intel Corporation
+ *  Copyright (C) 2002-2010  Marcel Holtmann <marcel@holtmann.org>
  *
  *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
+ *  This library is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU Lesser General Public
+ *  License as published by the Free Software Foundation; either
+ *  version 2.1 of the License, or (at your option) any later version.
  *
- *  This program is distributed in the hope that it will be useful,
+ *  This library is distributed in the hope that it will be useful,
  *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ *  Lesser General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
+ *  You should have received a copy of the GNU Lesser General Public
+ *  License along with this library; if not, write to the Free Software
  *  Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  *
  */
@@ -26,21 +26,21 @@
 #include <config.h>
 #endif
 
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <errno.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
-#include <sys/types.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/hci.h>
-#include <bluetooth/hci_lib.h>
+#include "lib/bluetooth.h"
+#include "lib/hci.h"
+#include "lib/hci_lib.h"
 
-#include "mainloop.h"
+#include "src/shared/mainloop.h"
+
 #include "packet.h"
 #include "hcidump.h"
 
@@ -64,7 +64,7 @@ static int open_hci_dev(uint16_t index)
 	struct hci_filter flt;
 	int fd, opt = 1;
 
-	fd = socket(AF_BLUETOOTH, SOCK_RAW | O_CLOEXEC, BTPROTO_HCI);
+	fd = socket(AF_BLUETOOTH, SOCK_RAW | SOCK_CLOEXEC, BTPROTO_HCI);
 	if (fd < 0) {
 		perror("Failed to open channel");
 		return -1;
@@ -161,17 +161,19 @@ static void device_callback(int fd, uint32_t events, void *user_data)
 
 		switch (buf[0]) {
 		case HCI_COMMAND_PKT:
-			packet_hci_command(tv, data->index, buf + 1, len - 1);
+			packet_hci_command(tv, NULL, data->index,
+							buf + 1, len - 1);
 			break;
 		case HCI_EVENT_PKT:
-			packet_hci_event(tv, data->index, buf + 1, len - 1);
+			packet_hci_event(tv, NULL, data->index,
+							buf + 1, len - 1);
 			break;
 		case HCI_ACLDATA_PKT:
-			packet_hci_acldata(tv, data->index, !!dir,
+			packet_hci_acldata(tv, NULL, data->index, !!dir,
 							buf + 1, len - 1);
 			break;
 		case HCI_SCODATA_PKT:
-			packet_hci_scodata(tv, data->index, !!dir,
+			packet_hci_scodata(tv, NULL, data->index, !!dir,
 							buf + 1, len - 1);
 			break;
 		}
@@ -267,7 +269,7 @@ static int open_stack_internal(void)
 	struct hci_filter flt;
 	int fd, opt = 1;
 
-	fd = socket(AF_BLUETOOTH, SOCK_RAW | O_CLOEXEC, BTPROTO_HCI);
+	fd = socket(AF_BLUETOOTH, SOCK_RAW | SOCK_CLOEXEC, BTPROTO_HCI);
 	if (fd < 0) {
 		perror("Failed to open channel");
 		return -1;

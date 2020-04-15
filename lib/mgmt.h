@@ -46,6 +46,8 @@
 #define MGMT_STATUS_CANCELLED		0x10
 #define MGMT_STATUS_INVALID_INDEX	0x11
 #define MGMT_STATUS_RFKILLED		0x12
+#define MGMT_STATUS_ALREADY_PAIRED	0x13
+#define MGMT_STATUS_PERMISSION_DENIED	0x14
 
 struct mgmt_hdr {
 	uint16_t opcode;
@@ -87,13 +89,19 @@ struct mgmt_rp_read_index_list {
 #define MGMT_SETTING_CONNECTABLE	0x00000002
 #define MGMT_SETTING_FAST_CONNECTABLE	0x00000004
 #define MGMT_SETTING_DISCOVERABLE	0x00000008
-#define MGMT_SETTING_PAIRABLE		0x00000010
+#define MGMT_SETTING_BONDABLE		0x00000010
 #define MGMT_SETTING_LINK_SECURITY	0x00000020
 #define MGMT_SETTING_SSP		0x00000040
 #define MGMT_SETTING_BREDR		0x00000080
 #define MGMT_SETTING_HS			0x00000100
 #define MGMT_SETTING_LE			0x00000200
 #define MGMT_SETTING_ADVERTISING	0x00000400
+#define MGMT_SETTING_SECURE_CONN	0x00000800
+#define MGMT_SETTING_DEBUG_KEYS		0x00001000
+#define MGMT_SETTING_PRIVACY		0x00002000
+#define MGMT_SETTING_CONFIGURATION	0x00004000
+#define MGMT_SETTING_STATIC_ADDRESS	0x00008000
+#define MGMT_SETTING_PHY_CONFIGURATION 0x00010000
 
 #define MGMT_OP_READ_INFO		0x0004
 struct mgmt_rp_read_info {
@@ -127,7 +135,7 @@ struct mgmt_cp_set_discoverable {
 
 #define MGMT_OP_SET_FAST_CONNECTABLE	0x0008
 
-#define MGMT_OP_SET_PAIRABLE		0x0009
+#define MGMT_OP_SET_BONDABLE		0x0009
 
 #define MGMT_OP_SET_LINK_SECURITY	0x000A
 
@@ -176,11 +184,11 @@ struct mgmt_cp_load_link_keys {
 
 struct mgmt_ltk_info {
 	struct mgmt_addr_info addr;
-	uint8_t authenticated;
+	uint8_t type;
 	uint8_t master;
 	uint8_t enc_size;
 	uint16_t ediv;
-	uint8_t rand[8];
+	uint64_t rand;
 	uint8_t val[16];
 } __packed;
 
@@ -267,15 +275,19 @@ struct mgmt_cp_user_passkey_neg_reply {
 
 #define MGMT_OP_READ_LOCAL_OOB_DATA	0x0020
 struct mgmt_rp_read_local_oob_data {
-	uint8_t hash[16];
-	uint8_t randomizer[16];
+	uint8_t hash192[16];
+	uint8_t rand192[16];
+	uint8_t hash256[16];
+	uint8_t rand256[16];
 } __packed;
 
 #define MGMT_OP_ADD_REMOTE_OOB_DATA	0x0021
 struct mgmt_cp_add_remote_oob_data {
 	struct mgmt_addr_info addr;
-	uint8_t hash[16];
-	uint8_t randomizer[16];
+	uint8_t hash192[16];
+	uint8_t rand192[16];
+	uint8_t hash256[16];
+	uint8_t rand256[16];
 } __packed;
 
 #define MGMT_OP_REMOVE_REMOTE_OOB_DATA	0x0022
@@ -335,6 +347,258 @@ struct mgmt_cp_set_scan_params {
 	uint16_t window;
 } __packed;
 
+#define MGMT_OP_SET_SECURE_CONN		0x002D
+
+#define MGMT_OP_SET_DEBUG_KEYS		0x002E
+
+struct mgmt_irk_info {
+	struct mgmt_addr_info addr;
+	uint8_t val[16];
+} __packed;
+
+#define MGMT_OP_SET_PRIVACY		0x002F
+struct mgmt_cp_set_privacy {
+	uint8_t privacy;
+	uint8_t irk[16];
+} __packed;
+
+#define MGMT_OP_LOAD_IRKS		0x0030
+struct mgmt_cp_load_irks {
+	uint16_t irk_count;
+	struct mgmt_irk_info irks[0];
+} __packed;
+
+#define MGMT_OP_GET_CONN_INFO		0x0031
+struct mgmt_cp_get_conn_info {
+	struct mgmt_addr_info addr;
+} __packed;
+struct mgmt_rp_get_conn_info {
+	struct mgmt_addr_info addr;
+	int8_t rssi;
+	int8_t tx_power;
+	int8_t max_tx_power;
+} __packed;
+
+#define MGMT_OP_GET_CLOCK_INFO		0x0032
+struct mgmt_cp_get_clock_info {
+	struct mgmt_addr_info addr;
+} __packed;
+struct mgmt_rp_get_clock_info {
+	struct mgmt_addr_info addr;
+	uint32_t  local_clock;
+	uint32_t  piconet_clock;
+	uint16_t  accuracy;
+} __packed;
+
+#define MGMT_OP_ADD_DEVICE		0x0033
+struct mgmt_cp_add_device {
+	struct mgmt_addr_info addr;
+	uint8_t action;
+} __packed;
+struct mgmt_rp_add_device {
+	struct mgmt_addr_info addr;
+} __packed;
+
+#define MGMT_OP_REMOVE_DEVICE		0x0034
+struct mgmt_cp_remove_device {
+	struct mgmt_addr_info addr;
+} __packed;
+struct mgmt_rp_remove_device {
+	struct mgmt_addr_info addr;
+} __packed;
+
+struct mgmt_conn_param {
+	struct mgmt_addr_info addr;
+	uint16_t min_interval;
+	uint16_t max_interval;
+	uint16_t latency;
+	uint16_t timeout;
+} __packed;
+
+#define MGMT_OP_LOAD_CONN_PARAM		0x0035
+struct mgmt_cp_load_conn_param {
+	uint16_t param_count;
+	struct mgmt_conn_param params[0];
+} __packed;
+
+#define MGMT_OP_READ_UNCONF_INDEX_LIST	0x0036
+struct mgmt_rp_read_unconf_index_list {
+	uint16_t num_controllers;
+	uint16_t index[0];
+} __packed;
+
+#define MGMT_OPTION_EXTERNAL_CONFIG	0x00000001
+#define MGMT_OPTION_PUBLIC_ADDRESS	0x00000002
+
+#define MGMT_OP_READ_CONFIG_INFO	0x0037
+struct mgmt_rp_read_config_info {
+	uint16_t manufacturer;
+	uint32_t supported_options;
+	uint32_t missing_options;
+} __packed;
+
+#define MGMT_OP_SET_EXTERNAL_CONFIG	0x0038
+struct mgmt_cp_set_external_config {
+	uint8_t config;
+} __packed;
+
+#define MGMT_OP_SET_PUBLIC_ADDRESS	0x0039
+struct mgmt_cp_set_public_address {
+	bdaddr_t bdaddr;
+} __packed;
+
+#define MGMT_OP_START_SERVICE_DISCOVERY		0x003A
+struct mgmt_cp_start_service_discovery {
+	uint8_t type;
+	int8_t rssi;
+	uint16_t uuid_count;
+	uint8_t uuids[0][16];
+} __packed;
+
+#define MGMT_OP_READ_LOCAL_OOB_EXT_DATA	0x003B
+struct mgmt_cp_read_local_oob_ext_data {
+	uint8_t  type;
+} __packed;
+struct mgmt_rp_read_local_oob_ext_data {
+	uint8_t  type;
+	uint16_t eir_len;
+	uint8_t  eir[0];
+} __packed;
+
+#define MGMT_OP_READ_EXT_INDEX_LIST	0x003C
+struct mgmt_rp_read_ext_index_list {
+	uint16_t num_controllers;
+	struct {
+		uint16_t index;
+		uint8_t type;
+		uint8_t bus;
+	} entry[0];
+} __packed;
+
+#define MGMT_OP_READ_ADV_FEATURES	0x003D
+struct mgmt_rp_read_adv_features {
+	uint32_t supported_flags;
+	uint8_t  max_adv_data_len;
+	uint8_t  max_scan_rsp_len;
+	uint8_t  max_instances;
+	uint8_t  num_instances;
+	uint8_t  instance[0];
+} __packed;
+
+#define MGMT_OP_ADD_ADVERTISING		0x003E
+struct mgmt_cp_add_advertising {
+	uint8_t  instance;
+	uint32_t flags;
+	uint16_t duration;
+	uint16_t timeout;
+	uint8_t  adv_data_len;
+	uint8_t  scan_rsp_len;
+	uint8_t  data[0];
+} __packed;
+struct mgmt_rp_add_advertising {
+	uint8_t instance;
+} __packed;
+
+#define MGMT_ADV_FLAG_CONNECTABLE	(1 << 0)
+#define MGMT_ADV_FLAG_DISCOV		(1 << 1)
+#define MGMT_ADV_FLAG_LIMITED_DISCOV	(1 << 2)
+#define MGMT_ADV_FLAG_MANAGED_FLAGS	(1 << 3)
+#define MGMT_ADV_FLAG_TX_POWER		(1 << 4)
+#define MGMT_ADV_FLAG_APPEARANCE	(1 << 5)
+#define MGMT_ADV_FLAG_LOCAL_NAME	(1 << 6)
+#define MGMT_ADV_FLAG_SEC_1M		(1 << 7)
+#define MGMT_ADV_FLAG_SEC_2M		(1 << 8)
+#define MGMT_ADV_FLAG_SEC_CODED		(1 << 9)
+
+#define MGMT_OP_REMOVE_ADVERTISING	0x003F
+struct mgmt_cp_remove_advertising {
+	uint8_t instance;
+} __packed;
+#define MGMT_REMOVE_ADVERTISING_SIZE	1
+struct mgmt_rp_remove_advertising {
+	uint8_t instance;
+} __packed;
+
+#define MGMT_OP_GET_ADV_SIZE_INFO	0x0040
+struct mgmt_cp_get_adv_size_info {
+	uint8_t  instance;
+	uint32_t flags;
+} __packed;
+#define MGMT_GET_ADV_SIZE_INFO_SIZE	5
+struct mgmt_rp_get_adv_size_info {
+	uint8_t  instance;
+	uint32_t flags;
+	uint8_t  max_adv_data_len;
+	uint8_t  max_scan_rsp_len;
+} __packed;
+
+#define MGMT_OP_START_LIMITED_DISCOVERY	0x0041
+
+#define MGMT_OP_READ_EXT_INFO		0x0042
+struct mgmt_rp_read_ext_info {
+	bdaddr_t bdaddr;
+	uint8_t version;
+	uint16_t manufacturer;
+	uint32_t supported_settings;
+	uint32_t current_settings;
+	uint16_t eir_len;
+	uint8_t  eir[0];
+} __packed;
+
+#define MGMT_OP_SET_APPEARANCE		0x0043
+struct mgmt_cp_set_appearance {
+	uint16_t appearance;
+} __packed;
+
+#define MGMT_OP_GET_PHY_CONFIGURATION	0x0044
+struct mgmt_rp_get_phy_confguration {
+	uint32_t	supported_phys;
+	uint32_t	configurable_phys;
+	uint32_t	selected_phys;
+} __packed;
+
+#define MGMT_PHY_BR_1M_1SLOT	0x00000001
+#define MGMT_PHY_BR_1M_3SLOT	0x00000002
+#define MGMT_PHY_BR_1M_5SLOT	0x00000004
+#define MGMT_PHY_EDR_2M_1SLOT	0x00000008
+#define MGMT_PHY_EDR_2M_3SLOT	0x00000010
+#define MGMT_PHY_EDR_2M_5SLOT	0x00000020
+#define MGMT_PHY_EDR_3M_1SLOT	0x00000040
+#define MGMT_PHY_EDR_3M_3SLOT	0x00000080
+#define MGMT_PHY_EDR_3M_5SLOT	0x00000100
+#define MGMT_PHY_LE_1M_TX		0x00000200
+#define MGMT_PHY_LE_1M_RX		0x00000400
+#define MGMT_PHY_LE_2M_TX		0x00000800
+#define MGMT_PHY_LE_2M_RX		0x00001000
+#define MGMT_PHY_LE_CODED_TX	0x00002000
+#define MGMT_PHY_LE_CODED_RX	0x00004000
+
+#define MGMT_PHY_LE_TX_MASK (MGMT_PHY_LE_1M_TX | MGMT_PHY_LE_2M_TX | \
+			     MGMT_PHY_LE_CODED_TX)
+#define MGMT_PHY_LE_RX_MASK (MGMT_PHY_LE_1M_RX | MGMT_PHY_LE_2M_RX | \
+			     MGMT_PHY_LE_CODED_RX)
+
+#define MGMT_OP_SET_PHY_CONFIGURATION	0x0045
+struct mgmt_cp_set_phy_confguration {
+	uint32_t	selected_phys;
+} __packed;
+
+#define MGMT_OP_SET_BLOCKED_KEYS	0x0046
+
+#define HCI_BLOCKED_KEY_TYPE_LINKKEY	0x00
+#define HCI_BLOCKED_KEY_TYPE_LTK		0x01
+#define HCI_BLOCKED_KEY_TYPE_IRK		0x02
+
+struct mgmt_blocked_key_info {
+	uint8_t type;
+	uint8_t val[16];
+} __packed;
+
+struct mgmt_cp_set_blocked_keys {
+	uint16_t key_count;
+	struct mgmt_blocked_key_info keys[0];
+} __packed;
+
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
 	uint16_t opcode;
@@ -361,7 +625,7 @@ struct mgmt_ev_controller_error {
 
 #define MGMT_EV_CLASS_OF_DEV_CHANGED	0x0007
 struct mgmt_ev_class_of_dev_changed {
-	uint8_t class_of_dev[3];
+	uint8_t dev_class[3];
 } __packed;
 
 #define MGMT_EV_LOCAL_NAME_CHANGED	0x0008
@@ -433,6 +697,7 @@ struct mgmt_ev_auth_failed {
 
 #define MGMT_DEV_FOUND_CONFIRM_NAME	0x01
 #define MGMT_DEV_FOUND_LEGACY_PAIRING	0x02
+#define MGMT_DEV_FOUND_NOT_CONNECTABLE	0x04
 
 #define MGMT_EV_DEVICE_FOUND		0x0012
 struct mgmt_ev_device_found {
@@ -471,6 +736,92 @@ struct mgmt_ev_passkey_notify {
 	uint8_t entered;
 } __packed;
 
+#define MGMT_EV_NEW_IRK			0x0018
+struct mgmt_ev_new_irk {
+	uint8_t  store_hint;
+	bdaddr_t rpa;
+	struct mgmt_irk_info key;
+} __packed;
+
+struct mgmt_csrk_info {
+	struct mgmt_addr_info addr;
+	uint8_t type;
+	uint8_t val[16];
+} __packed;
+
+#define MGMT_EV_NEW_CSRK		0x0019
+struct mgmt_ev_new_csrk {
+	uint8_t store_hint;
+	struct mgmt_csrk_info key;
+} __packed;
+
+#define MGMT_EV_DEVICE_ADDED		0x001a
+struct mgmt_ev_device_added {
+	struct mgmt_addr_info addr;
+	uint8_t action;
+} __packed;
+
+#define MGMT_EV_DEVICE_REMOVED		0x001b
+struct mgmt_ev_device_removed {
+	struct mgmt_addr_info addr;
+} __packed;
+
+#define MGMT_EV_NEW_CONN_PARAM		0x001c
+struct mgmt_ev_new_conn_param {
+	struct mgmt_addr_info addr;
+	uint8_t store_hint;
+	uint16_t min_interval;
+	uint16_t max_interval;
+	uint16_t latency;
+	uint16_t timeout;
+} __packed;
+
+#define MGMT_EV_UNCONF_INDEX_ADDED	0x001d
+
+#define MGMT_EV_UNCONF_INDEX_REMOVED	0x001e
+
+#define MGMT_EV_NEW_CONFIG_OPTIONS	0x001f
+
+#define MGMT_EV_EXT_INDEX_ADDED		0x0020
+struct mgmt_ev_ext_index_added {
+	uint8_t type;
+	uint8_t bus;
+} __packed;
+
+#define MGMT_EV_EXT_INDEX_REMOVED	0x0021
+struct mgmt_ev_ext_index_removed {
+	uint8_t type;
+	uint8_t bus;
+} __packed;
+
+#define MGMT_EV_LOCAL_OOB_DATA_UPDATED	0x0022
+struct mgmt_ev_local_oob_data_updated {
+	uint8_t  type;
+	uint16_t eir_len;
+	uint8_t  eir[0];
+} __packed;
+
+#define MGMT_EV_ADVERTISING_ADDED	0x0023
+struct mgmt_ev_advertising_added {
+	uint8_t instance;
+} __packed;
+
+#define MGMT_EV_ADVERTISING_REMOVED	0x0024
+struct mgmt_ev_advertising_removed {
+	uint8_t instance;
+} __packed;
+
+#define MGMT_EV_EXT_INFO_CHANGED	0x0025
+struct mgmt_ev_ext_info_changed {
+	uint16_t eir_len;
+	uint8_t  eir[0];
+} __packed;
+
+#define MGMT_EV_PHY_CONFIGURATION_CHANGED	0x0026
+struct mgmt_ev_phy_configuration_changed {
+	uint16_t	selected_phys;
+} __packed;
+
 static const char *mgmt_op[] = {
 	"<0x0000>",
 	"Read Version",
@@ -480,15 +831,15 @@ static const char *mgmt_op[] = {
 	"Set Powered",
 	"Set Discoverable",
 	"Set Connectable",
-	"Set Fast Connectable",		/* 0x0008 */
-	"Set Pairable",
+	"Set Fast Connectable",			/* 0x0008 */
+	"Set Bondable",
 	"Set Link Security",
 	"Set Secure Simple Pairing",
 	"Set High Speed",
 	"Set Low Energy",
 	"Set Dev Class",
 	"Set Local Name",
-	"Add UUID",			/* 0x0010 */
+	"Add UUID",					/* 0x0010 */
 	"Remove UUID",
 	"Load Link Keys",
 	"Load Long Term Keys",
@@ -496,7 +847,7 @@ static const char *mgmt_op[] = {
 	"Get Connections",
 	"PIN Code Reply",
 	"PIN Code Neg Reply",
-	"Set IO Capability",		/* 0x0018 */
+	"Set IO Capability",				/* 0x0018 */
 	"Pair Device",
 	"Cancel Pair Device",
 	"Unpair Device",
@@ -504,7 +855,7 @@ static const char *mgmt_op[] = {
 	"User Confirm Neg Reply",
 	"User Passkey Reply",
 	"User Passkey Neg Reply",
-	"Read Local OOB Data",		/* 0x0020 */
+	"Read Local OOB Data",				/* 0x0020 */
 	"Add Remote OOB Data",
 	"Remove Remove OOB Data",
 	"Start Discovery",
@@ -512,11 +863,37 @@ static const char *mgmt_op[] = {
 	"Confirm Name",
 	"Block Device",
 	"Unblock Device",
-	"Set Device ID",
+	"Set Device ID",				/* 0x0028 */
 	"Set Advertising",
 	"Set BR/EDR",
 	"Set Static Address",
 	"Set Scan Parameters",
+	"Set Secure Connections",
+	"Set Debug Keys",
+	"Set Privacy",
+	"Load Identity Resolving Keys",			/* 0x0030 */
+	"Get Connection Information",
+	"Get Clock Information",
+	"Add Device",
+	"Remove Device",
+	"Load Connection Parameters",
+	"Read Unconfigured Index List",
+	"Read Controller Configuration Information",
+	"Set External Configuration",			/* 0x0038 */
+	"Set Public Address",
+	"Start Service Discovery",
+	"Read Local Out Of Band Extended Data",
+	"Read Extended Controller Index List",
+	"Read Advertising Features",
+	"Add Advertising",
+	"Remove Advertising",
+	"Get Advertising Size Information",		/* 0x0040 */
+	"Start Limited Discovery",
+	"Read Extended Controller Information",
+	"Set Appearance",
+	"Get PHY Configuration",
+	"Set PHY Configuration",
+	"Set Blocked Keys",
 };
 
 static const char *mgmt_ev[] = {
@@ -528,7 +905,7 @@ static const char *mgmt_ev[] = {
 	"Index Removed",
 	"New Settings",
 	"Class of Device Changed",
-	"Local Name Changed",		/* 0x0008 */
+	"Local Name Changed",				/* 0x0008 */
 	"New Link Key",
 	"New Long Term Key",
 	"Device Connected",
@@ -536,7 +913,7 @@ static const char *mgmt_ev[] = {
 	"Connect Failed",
 	"PIN Code Request",
 	"User Confirm Request",
-	"User Passkey Request",		/* 0x0010 */
+	"User Passkey Request",				/* 0x0010 */
 	"Authentication Failed",
 	"Device Found",
 	"Discovering",
@@ -544,6 +921,21 @@ static const char *mgmt_ev[] = {
 	"Device Unblocked",
 	"Device Unpaired",
 	"Passkey Notify",
+	"New Identity Resolving Key",			/* 0x0018 */
+	"New Signature Resolving Key",
+	"Device Added",
+	"Device Removed",
+	"New Connection Parameter",
+	"Unconfigured Index Added",
+	"Unconfigured Index Removed",
+	"New Configuration Options",
+	"Extended Index Added",				/* 0x0020 */
+	"Extended Index Removed",
+	"Local Out Of Band Extended Data Updated",
+	"Advertising Added",
+	"Advertising Removed",
+	"Extended Controller Information Changed",
+	"PHY Configuration Changed",
 };
 
 static const char *mgmt_status[] = {
@@ -566,6 +958,8 @@ static const char *mgmt_status[] = {
 	"Cancelled",
 	"Invalid Index",
 	"Blocked through rfkill",
+	"Already Paired",
+	"Permission Denied",
 };
 
 #ifndef NELEM
